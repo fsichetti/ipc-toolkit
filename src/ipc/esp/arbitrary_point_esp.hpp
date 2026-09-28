@@ -82,16 +82,6 @@ public:
         Eigen::ConstRef<Eigen::MatrixXd> V, Eigen::ConstRef<Point> q) const;
 
 private:
-    /// @brief Build the (symbolically-cancelled) collision dict for q,
-    /// mirroring PointPotential::build_collisions_at_vertex (3D) /
-    /// build_collisions_at_edge_qp (2D) with q as a virtual vertex
-    /// (id == V.rows()) instead of a real one or an edge quadrature point,
-    /// and candidates sourced from point_bvh instead of
-    /// Candidates::vv_set/ve_set/vf_set.
-    std::unique_ptr<ESPCollisionDict<PointType::VERTEX, dim>>
-    build_collisions_at_point(
-        Eigen::ConstRef<Eigen::MatrixXd> V, Eigen::ConstRef<Point> q) const;
-
     const CollisionMesh& mesh;
     ESPParameters params;
     ArbitraryPointBVH point_bvh;
