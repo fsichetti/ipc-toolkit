@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <tuple>
+#include <vector>
 
 namespace ipc {
 
@@ -27,6 +28,12 @@ namespace ipc {
 /// naive "sum every found primitive independently with a fixed sign"
 /// approach suffers near shared features, where barrier derivatives blow up
 /// as distance -> 0.
+///
+/// Every element enters with its inclusion-exclusion weight, chosen so that
+/// the weights of the elements containing any point of the mesh sum to one
+/// (supplemental S2). A closed mesh gets the alternating signs; boundary edges
+/// and vertices get zero (S4), and edges in no face and isolated vertices get
+/// one, so open meshes and lower-dimensional pieces are handled too.
 ///
 /// Value/gradient/Hessian are computed by the same ESPCollision::
 /// operator()/gradient()/hessian() used by the production
@@ -85,6 +92,9 @@ private:
     const CollisionMesh& mesh;
     ESPParameters params;
     ArbitraryPointBVH point_bvh;
+    /// Inclusion-exclusion weight of each edge and each vertex (every face
+    /// has weight one), from the mesh connectivity; see the constructor.
+    std::vector<int> edge_weights, vertex_weights;
 };
 
 extern template class ArbitraryPointESP<2>;

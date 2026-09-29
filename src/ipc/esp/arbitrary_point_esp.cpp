@@ -248,6 +248,8 @@ namespace {
         const ArbitraryPointBVH& point_bvh,
         const CollisionMesh& mesh,
         const ESPParameters& params,
+        const std::vector<int>& edge_weights,
+        const std::vector<int>& vertex_weights,
         Eigen::ConstRef<Eigen::MatrixXd> V,
         Eigen::ConstRef<Eigen::RowVector<double, dim>> q)
     {
@@ -262,33 +264,38 @@ namespace {
         point_bvh.query_point(
             q, params.dhat, s.vertex_ids, s.edge_ids, s.face_ids);
 
-        // Inclusion-exclusion over codimension: every primitive whose offset
-        // region can contain q contributes a term signed (-1)^(codim-1) -- in
-        // 3D faces +1, edges -1, vertices +1; in 2D edges +1, vertices -1.
-        // Each codim-1 primitive is first *reduced* to the sub-feature its
-        // closest point to q actually lies on (never just "this face's
-        // interior" regardless of where the closest point falls), so
-        // redundant terms converging on the same feature share a typed hash
-        // and cancel as integers in insert_by_value() above.
+        // Inclusion-exclusion: every element whose offset region can contain q
+        // contributes a term with the element's own weight (see the
+        // constructor) -- on a closed mesh, in 3D faces +1, edges -1, vertices
+        // +1; in 2D edges +1, vertices -1. Each element is first *reduced* to
+        // the sub-feature its closest point to q actually lies on (never just
+        // "this face's interior" regardless of where the closest point falls),
+        // so redundant terms converging on the same feature share a typed hash
+        // and cancel as integers in insert_by_value() above. An element of
+        // weight zero (a boundary edge or vertex) contributes nothing.
         if constexpr (dim == 3) {
             for (const index_t fi : s.face_ids) {
                 reduce_point_triangle(s, fi, vid, +1, params, mesh, V_view);
             }
             for (const index_t ei : s.edge_ids) {
-                reduce_point_edge(s, ei, vid, -1, params, mesh, V_view);
+                if (edge_weights[ei] != 0) {
+                    reduce_point_edge(
+                        s, ei, vid, edge_weights[ei], params, mesh, V_view);
+                }
             }
         } else {
-            // In 2D edges are the codim-1 primitives, so they take the +1 the
-            // faces take in 3D and there is no face loop (mesh.faces() is
-            // empty and the face BVH is never built).
+            // In 2D edges are the top-dimensional elements, so they take the
+            // weight faces take in 3D and there is no face loop (mesh.faces()
+            // is empty and the face BVH is never built).
             for (const index_t ei : s.edge_ids) {
-                reduce_point_edge_2d(s, ei, vid, +1, params, mesh, V_view);
+                reduce_point_edge_2d(
+                    s, ei, vid, edge_weights[ei], params, mesh, V_view);
             }
         }
 
-        // Vertices: the highest codimension, so +1 in 3D and -1 in 2D. These
-        // merge (and symbolically cancel) with the vertex-typed collisions the
-        // reductions above emit when both resolve to the same corner.
+        // Vertices, with their own weights. These merge (and symbolically
+        // cancel) with the vertex-typed collisions the reductions above emit
+        // when both resolve to the same corner.
         //
         // The (query, mesh vertex) argument order is load-bearing in 2D and
         // only in 2D: get_typed_hash() is {type, primitive_a.id(),
@@ -299,10 +306,11 @@ namespace {
         // (esp_collision_template.cpp), so 3D merges either way.
         using VV = typename PointCollisions<dim>::VV;
         for (const index_t vi : s.vertex_ids) {
-            if ((V.row(vi) - q).squaredNorm() >= params.dhat * params.dhat) {
+            if (vertex_weights[vi] == 0
+                || (V.row(vi) - q).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
             }
-            insert_by_value(s.vv, VV(vid, vi, mesh), dim == 2 ? -1 : +1);
+            insert_by_value(s.vv, VV(vid, vi, mesh), vertex_weights[vi]);
         }
         return s;
     }
@@ -352,6 +360,28 @@ ArbitraryPointESP<dim>::ArbitraryPointESP(
             "ArbitraryPointESP<{}> requires a {}D mesh (got {}D)!", dim, dim,
             mesh.dim());
     }
+
+    // Inclusion-exclusion weights (supplemental S2): the weights of the
+    // elements containing any point of the mesh sum to one. Faces take one, so
+    // an edge takes 1 - (faces on it) and a vertex 1 - (edges at it) + (faces
+    // at it), each face at a vertex having two of its edges there. A closed
+    // mesh gets the alternating +1/-1/+1 (2D: edges +1, vertices -1). A
+    // boundary edge or vertex, and an open polyline's end, gets zero (S4);
+    // with the closed-mesh signs instead, the potential is exactly zero beyond
+    // a straight boundary edge of an open sheet, where it should be b(d). An
+    // edge in no face and an isolated vertex get one.
+    edge_weights.assign(mesh.num_edges(), 1);
+    vertex_weights.assign(mesh.num_vertices(), 1);
+    for (int f = 0; f < mesh.faces().rows(); f++) {
+        for (int j = 0; j < 3; j++) {
+            --edge_weights[mesh.faces_to_edges()(f, j)];
+            ++vertex_weights[mesh.faces()(f, j)];
+        }
+    }
+    for (int e = 0; e < mesh.edges().rows(); e++) {
+        --vertex_weights[mesh.edges()(e, 0)];
+        --vertex_weights[mesh.edges()(e, 1)];
+    }
 }
 
 template <int dim>
@@ -364,8 +394,8 @@ template <int dim>
 double ArbitraryPointESP<dim>::operator()(
     Eigen::ConstRef<Eigen::MatrixXd> V, Eigen::ConstRef<Point> q) const
 {
-    const PointCollisions<dim>& collisions =
-        build_point_collisions<dim>(point_bvh, mesh, params, V, q);
+    const PointCollisions<dim>& collisions = build_point_collisions<dim>(
+        point_bvh, mesh, params, edge_weights, vertex_weights, V, q);
     const VertexMatrixView<dim> V_view(V, q);
 
     double value = 0.0;
@@ -382,8 +412,8 @@ auto ArbitraryPointESP<dim>::gradient(
     Eigen::ConstRef<Eigen::MatrixXd> V, Eigen::ConstRef<Point> q) const
     -> Gradient
 {
-    const PointCollisions<dim>& collisions =
-        build_point_collisions<dim>(point_bvh, mesh, params, V, q);
+    const PointCollisions<dim>& collisions = build_point_collisions<dim>(
+        point_bvh, mesh, params, edge_weights, vertex_weights, V, q);
     const VertexMatrixView<dim> V_view(V, q);
     const index_t vid = static_cast<index_t>(V.rows());
 
@@ -403,8 +433,8 @@ auto ArbitraryPointESP<dim>::hessian(
     Eigen::ConstRef<Eigen::MatrixXd> V, Eigen::ConstRef<Point> q) const
     -> Hessian
 {
-    const PointCollisions<dim>& collisions =
-        build_point_collisions<dim>(point_bvh, mesh, params, V, q);
+    const PointCollisions<dim>& collisions = build_point_collisions<dim>(
+        point_bvh, mesh, params, edge_weights, vertex_weights, V, q);
     const VertexMatrixView<dim> V_view(V, q);
     const index_t vid = static_cast<index_t>(V.rows());
 
@@ -427,8 +457,8 @@ auto ArbitraryPointESP<dim>::evaluate(
     Eigen::ConstRef<Eigen::MatrixXd> V, Eigen::ConstRef<Point> q) const
     -> std::tuple<double, Gradient, Hessian>
 {
-    const PointCollisions<dim>& collisions =
-        build_point_collisions<dim>(point_bvh, mesh, params, V, q);
+    const PointCollisions<dim>& collisions = build_point_collisions<dim>(
+        point_bvh, mesh, params, edge_weights, vertex_weights, V, q);
     const VertexMatrixView<dim> V_view(V, q);
     const index_t vid = static_cast<index_t>(V.rows());
 
