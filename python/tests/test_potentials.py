@@ -1,7 +1,8 @@
 """Tests for the potential bindings.
 
 Covers the Python-side input validation (which the C++ API only enforces with
-assert(), compiled out under NDEBUG) and the smooth-contact/GCP bindings.
+assert(), compiled out under NDEBUG) and the smooth-contact/GCP and ESP
+bindings.
 
 Uses unittest.TestCase so that assertRaises is available under both nose2 (the
 runner used in CI) and pytest, without adding a pytest dependency.
@@ -258,6 +259,38 @@ class TestGCPPotentialNaming(unittest.TestCase):
 
     def test_old_name_removed(self):
         self.assertFalse(hasattr(ipctk, "SmoothPotential"))
+
+
+class TestESPPotential(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mesh, cls.rest = two_cubes()
+        cls.params = ipctk.ESPParameters(DHAT)
+        cls.potential = ipctk.ESPPotential(cls.params)
+        cls.collisions = ipctk.ESPCollisions()
+        cls.collisions.build(cls.mesh, cls.rest, cls.params)
+
+    def test_parameter_defaults(self):
+        self.assertTrue(self.params.area_weights)
+        self.assertEqual(
+            self.params.integration_type, ipctk.IntegrationType.NORMAL)
+
+    def test_gradient_matches_finite_differences(self):
+        args = (self.collisions, self.mesh)
+        self.assertGreater(self.potential(*args, self.rest), 0.0)
+
+        direction = np.random.default_rng(0).standard_normal(self.rest.shape)
+        h = 1e-7  # central differences are O(h^2) and the barrier is stiff
+        fd = (self.potential(*args, self.rest + h * direction)
+              - self.potential(*args, self.rest - h * direction)) / (2 * h)
+        gradient = self.potential.gradient(*args, self.rest)
+        self.assertAlmostEqual(
+            gradient @ direction.ravel() / fd, 1.0, places=5)
+
+    def test_hessian_shape(self):
+        hessian = self.potential.hessian(
+            self.collisions, self.mesh, self.rest)
+        self.assertEqual(hessian.shape, (self.rest.size, self.rest.size))
 
 
 if __name__ == "__main__":

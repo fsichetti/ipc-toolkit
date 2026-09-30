@@ -3,7 +3,6 @@
 #include <ipc/potentials/barrier_potential.hpp>
 #include <ipc/gcp/gcp_potential.hpp>
 #include <ipc/esp/esp_potential.hpp>
-#include <ipc/esp/quadrature_potential.hpp>
 
 using namespace ipc;
 
@@ -246,33 +245,35 @@ void define_esp_potential(py::module& m)
     py::class_<ESPParameters>(m, "ESPParameters")
         .def(
             py::init<
-                const double, const double, const int,
+                const double, const double, const int, bool,
                 ESPParameters::IntegrationType>(),
             R"ipc_Qu8mg5v7(
             Construct parameter set for ESP contact.
 
             Parameters:
-                dhat, dbar_factor, quad_order, integration_type
+                dhat, dbar_factor, quad_order, area_weights, integration_type
             )ipc_Qu8mg5v7",
             py::arg("dhat"), py::arg("dbar_factor") = 1.0,
-            py::arg("quad_order") = 1,
+            py::arg("quad_order") = 1, py::arg("area_weights") = true,
             py::arg("integration_type") =
-                ESPParameters::IntegrationType::NO_OBST)
+                ESPParameters::IntegrationType::NORMAL)
         .def_readonly("dhat", &ESPParameters::dhat)
         .def_readonly("dbar", &ESPParameters::dbar)
         .def_readonly("quad_order", &ESPParameters::quad_order)
+        .def_readonly("area_weights", &ESPParameters::area_weights)
         .def_readonly("integration_type", &ESPParameters::integration_type);
 
     py::class_<ESPPotential>(m, "ESPPotential")
         .def(
-            py::init<const ESPParameters&>(),
+            py::init<const ESPParameters&, const bool>(),
             R"ipc_Qu8mg5v7(
             Construct a smooth barrier potential.
 
             Parameters:
                 param: A set of parameters.
+                use_near_far: Whether to normalize quadrature weights so they sum to 1.
             )ipc_Qu8mg5v7",
-            py::arg("param"))
+            py::arg("param"), py::arg("use_near_far") = true)
         .def(
             "__call__",
             py::overload_cast<
@@ -329,39 +330,4 @@ void define_esp_potential(py::module& m)
             )ipc_Qu8mg5v7",
             py::arg("collisions"), py::arg("mesh"), py::arg("vertices"),
             py::arg("project_hessian_to_psd") = PSDProjectionMethod::NONE);
-
-    py::class_<QuadraturePotential>(m, "QuadraturePotential")
-        .def(
-            py::init<
-                const CollisionMesh&, const Eigen::MatrixXd&, const double>(),
-            R"ipc_Qu8mg5v7(
-            Construct a quadrature barrier potential.
-
-            Parameters:
-                mesh, V, dhat
-            )ipc_Qu8mg5v7",
-            py::arg("mesh"), py::arg("V"), py::arg("dhat"))
-        .def(
-            "evaluate_per_face",
-            py::overload_cast<const Eigen::MatrixXd&, const int>(
-                &ipc::QuadraturePotential::evaluate_per_face, py::const_),
-            R"ipc_Qu8mg5v7(
-            Compute the barrier potential for a face.
-
-            Parameters:
-                V, face_id
-            )ipc_Qu8mg5v7",
-            py::arg("V"), py::arg("face_id"))
-        .def(
-            "evaluate_per_face_gradient",
-            py::overload_cast<const Eigen::MatrixXd&, const int>(
-                &ipc::QuadraturePotential::evaluate_per_face_gradient,
-                py::const_),
-            R"ipc_Qu8mg5v7(
-            Compute the barrier potential gradient for a face.
-
-            Parameters:
-                V, face_id
-            )ipc_Qu8mg5v7",
-            py::arg("V"), py::arg("face_id"));
 }

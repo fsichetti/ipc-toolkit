@@ -103,8 +103,7 @@ void define_esp_collisions(py::module_& m)
             "build",
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
-                const ESPParameters, const bool, const BroadPhase*>(
-                &ESPCollisions::build),
+                const ESPParameters, BroadPhase*>(&ESPCollisions::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of collisions used to compute the potential.
 
@@ -112,11 +111,9 @@ void define_esp_collisions(py::module_& m)
                 mesh: The collision mesh.
                 vertices: Vertices of the collision mesh.
                 param: ESPParameters.
-                use_adaptive_dhat: If the adaptive dhat should be used.
                 broad_phase: Broad phase method.
             )ipc_Qu8mg5v7",
             py::arg("mesh"), py::arg("vertices"), py::arg("param"),
-            py::arg("use_adaptive_dhat") = false,
             py::arg("broad_phase") = nullptr)
         .def(
             "compute_minimum_distance",
@@ -137,21 +134,6 @@ void define_esp_collisions(py::module_& m)
             "empty", &ESPCollisions::empty,
             "Get if the collision set is empty.")
         .def("clear", &ESPCollisions::clear, "Clear the collision set.")
-        .def(
-            "__getitem__",
-            [](ESPCollisions& self, size_t i) ->
-            typename ESPCollisions::value_type& { return self[i]; },
-            py::return_value_policy::reference,
-            R"ipc_Qu8mg5v7(
-            Get a reference to collision at index i.
-
-            Parameters:
-                i: The index of the collision.
-
-            Returns:
-                A reference to the collision.
-            )ipc_Qu8mg5v7",
-            py::arg("i"))
         .def(
             "to_string", &ESPCollisions::to_string, py::arg("mesh"),
             py::arg("vertices"), py::arg("param"))
