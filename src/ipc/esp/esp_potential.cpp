@@ -9,6 +9,7 @@
 #include "ipc/gcp/distance/mollifier.hpp"
 #include "ipc/gcp/distance/point_face.hpp"
 
+#include <ipc/geometry/area.hpp>
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/utils/profile_registry.hpp>
 
@@ -47,6 +48,113 @@ namespace {
         }
         return r;
     }
+
+    // Adds each gradient term times the area weight of its edge or face.
+    class GradientSink {
+    public:
+        GradientSink(const int ndof, const int dim)
+            : storage(Eigen::VectorXd::Zero(ndof))
+            , dim(dim)
+        {
+        }
+
+        double weight(const double w) const { return w; }
+
+        void
+        add(const index_t,
+            const std::vector<index_t>& dofs,
+            Eigen::ConstRef<Eigen::VectorXd> g)
+        {
+            storage.local()(dofs) += g;
+        }
+
+        void add_vertices(
+            const index_t,
+            const std::vector<index_t>& vertex_ids,
+            Eigen::ConstRef<Eigen::VectorXd> g)
+        {
+            local_gradient_to_global_gradient(
+                g, vertex_ids, dim, storage.local());
+        }
+
+        tbb::enumerable_thread_specific<Eigen::VectorXd> storage;
+
+    private:
+        const int dim;
+    };
+
+    // Collects each gradient term without its area weight, times the gradient
+    // of that weight w.r.t. the rest positions.
+    class ShapeDerivativeSink {
+    public:
+        explicit ShapeDerivativeSink(const CollisionMesh& mesh) : mesh(mesh) { }
+
+        double weight(const double) const { return 1; }
+
+        void
+        add(const index_t group,
+            const std::vector<index_t>& dofs,
+            Eigen::ConstRef<Eigen::VectorXd> g)
+        {
+            const Eigen::SparseVector<double> w_grad = weight_gradient(group);
+            auto& triplets = storage.local();
+            for (int i = 0; i < g.size(); i++) {
+                for (Eigen::SparseVector<double>::InnerIterator j(w_grad); j;
+                     ++j) {
+                    triplets.emplace_back(dofs[i], j.index(), g[i] * j.value());
+                }
+            }
+        }
+
+        void add_vertices(
+            const index_t group,
+            const std::vector<index_t>& vertex_ids,
+            Eigen::ConstRef<Eigen::VectorXd> g)
+        {
+            const int dim = mesh.dim();
+            std::vector<index_t> dofs(g.size());
+            for (int i = 0; i < g.size() / dim; i++) {
+                for (int d = 0; d < dim; d++) {
+                    if constexpr (VERTEX_DERIVATIVE_LAYOUT == Eigen::RowMajor) {
+                        dofs[i * dim + d] = vertex_ids[i] * dim + d;
+                    } else {
+                        dofs[i * dim + d] =
+                            mesh.num_vertices() * d + vertex_ids[i];
+                    }
+                }
+            }
+            add(group, dofs, g);
+        }
+
+        tbb::enumerable_thread_specific<std::vector<Eigen::Triplet<double>>>
+            storage;
+
+    private:
+        // Gradient of the edge length (2D) or of a ninth of the face area (3D).
+        Eigen::SparseVector<double> weight_gradient(const index_t group) const
+        {
+            const Eigen::MatrixXd& rest = mesh.rest_positions();
+            Eigen::SparseVector<double> w_grad(mesh.ndof());
+            if (mesh.dim() == 2) {
+                const auto e = mesh.edges().row(group);
+                const VectorMax3d e0 = rest.row(e(0));
+                const VectorMax3d e1 = rest.row(e(1));
+                local_gradient_to_global_gradient(
+                    edge_length_gradient(e0, e1), e, 2, w_grad);
+            } else {
+                const auto f = mesh.faces().row(group);
+                const Eigen::Vector3d t0 = rest.row(f(0));
+                const Eigen::Vector3d t1 = rest.row(f(1));
+                const Eigen::Vector3d t2 = rest.row(f(2));
+                local_gradient_to_global_gradient(
+                    Eigen::VectorXd(triangle_area_gradient(t0, t1, t2) / 9.), f,
+                    3, w_grad);
+            }
+            return w_grad;
+        }
+
+        const CollisionMesh& mesh;
+    };
 } // namespace
 
 double ESPPotential::operator()(
@@ -360,23 +468,13 @@ double ESPPotential::operator()(
     return result;
 }
 
-Eigen::VectorXd ESPPotential::gradient(
+template <typename Sink>
+void ESPPotential::gradient_terms(
     const ESPCollisions& collisions,
     const CollisionMesh& mesh,
-    Eigen::ConstRef<Eigen::MatrixXd> X) const
+    Eigen::ConstRef<Eigen::MatrixXd> X,
+    Sink& sink) const
 {
-    IPC_PROFILE_SCOPE("ho.potential_gradient");
-    assert(X.rows() == mesh.num_vertices());
-
-    if (collisions.empty()) {
-        return Eigen::VectorXd::Zero(X.size());
-    }
-
-    const int dim = X.cols();
-
-    tbb::enumerable_thread_specific<Eigen::VectorXd> storage(
-        Eigen::VectorXd::Zero(X.size()));
-
     if (mesh.dim() == 2) {
         const GaussLobatto::Rule& rule =
             GaussLobatto::get_rule(params.quad_order);
@@ -390,13 +488,12 @@ Eigen::VectorXd ESPPotential::gradient(
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, active_edges.size()),
             [&](const tbb::blocked_range<size_t>& r) {
-                Eigen::VectorXd& global_grad = storage.local();
-
                 for (size_t k = r.begin(); k < r.end(); ++k) {
                     const index_t ei = active_edges[k];
                     const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
                     const double L = mesh.edge_area(ei);
-                    const double w_edge = params.area_weights ? L : 1.;
+                    const double w_edge =
+                        sink.weight(params.area_weights ? L : 1.);
                     const index_t e0 = mesh.edges()(ei, 0);
                     const index_t e1 = mesh.edges()(ei, 1);
 
@@ -419,8 +516,7 @@ Eigen::VectorXd ESPPotential::gradient(
                                     X_ext, dict, params,
                                     collisions.adaptive_dhat.get(), lambda);
 
-                        local_gradient_to_global_gradient(
-                            local_grad, dict.vertex_ids(), dim, global_grad);
+                        sink.add_vertices(ei, dict.vertex_ids(), local_grad);
                     }
                 }
             });
@@ -434,10 +530,10 @@ Eigen::VectorXd ESPPotential::gradient(
             const bool skip_ee_grad = (dbar_factor == 0);
 
             auto loop_body = [&](const tbb::blocked_range<index_t>& r) {
-                Eigen::VectorXd& grad = storage.local();
                 for (index_t f = r.begin(); f < r.end(); f++) {
                     const double area = mesh.face_areas()(f);
-                    const double w = params.area_weights ? (area / 9.) : 1.;
+                    const double w =
+                        sink.weight(params.area_weights ? (area / 9.) : 1.);
                     // Pass 1: collect all quadrature contributions for this
                     // face
                     struct EEGradEntry {
@@ -726,20 +822,24 @@ Eigen::VectorXd ESPPotential::gradient(
                         }
                         const double avg_P_near = total_p_near / total_w_near;
                         for (const auto& e : ee_cache) {
-                            grad(e.dict->dofs()) +=
-                                (w / total_w_near * e.mol_val) * e.grad_p;
-                            grad(e.dict->primary_dofs()) +=
+                            sink.add(
+                                f, e.dict->dofs(),
+                                (w / total_w_near * e.mol_val) * e.grad_p);
+                            sink.add(
+                                f, e.dict->primary_dofs(),
                                 (w / total_w_near * (e.P - avg_P_near))
-                                * e.mol_grad;
+                                    * e.mol_grad);
                         }
                         for (const auto& e : const_cache) {
                             if (total_w_far > 0) {
-                                grad(*e.dofs) +=
+                                sink.add(
+                                    f, *e.dofs,
                                     (w / total_w_near) * e.grad_p_near
-                                    + (w / total_w_far) * e.grad_p_far;
+                                        + (w / total_w_far) * e.grad_p_far);
                             } else {
-                                grad(*e.dofs) +=
-                                    (w / total_w_near) * e.grad_p_near;
+                                sink.add(
+                                    f, *e.dofs,
+                                    (w / total_w_near) * e.grad_p_near);
                             }
                         }
                     } else if (use_near_far) {
@@ -748,23 +848,27 @@ Eigen::VectorXd ESPPotential::gradient(
                         assert(total_w > 0);
                         const double avg_P = total_p / total_w;
                         for (const auto& e : ee_cache) {
-                            grad(e.dict->dofs()) +=
-                                (w / total_w * e.mol_val) * e.grad_p;
-                            grad(e.dict->primary_dofs()) +=
-                                (w / total_w * (e.P - avg_P)) * e.mol_grad;
+                            sink.add(
+                                f, e.dict->dofs(),
+                                (w / total_w * e.mol_val) * e.grad_p);
+                            sink.add(
+                                f, e.dict->primary_dofs(),
+                                (w / total_w * (e.P - avg_P)) * e.mol_grad);
                         }
                         for (const auto& e : const_cache) {
-                            grad(*e.dofs) += (w / total_w) * e.grad_p_near;
+                            sink.add(f, *e.dofs, (w / total_w) * e.grad_p_near);
                         }
                     } else {
                         // Unnormalized
                         for (const auto& e : ee_cache) {
-                            grad(e.dict->dofs()) += w * e.mol_val * e.grad_p;
-                            grad(e.dict->primary_dofs()) +=
-                                w * e.P * e.mol_grad;
+                            sink.add(
+                                f, e.dict->dofs(), w * e.mol_val * e.grad_p);
+                            sink.add(
+                                f, e.dict->primary_dofs(),
+                                w * e.P * e.mol_grad);
                         }
                         for (const auto& e : const_cache) {
-                            grad(*e.dofs) += w * e.grad_p_near;
+                            sink.add(f, *e.dofs, w * e.grad_p_near);
                         }
                     }
                 }
@@ -774,14 +878,54 @@ Eigen::VectorXd ESPPotential::gradient(
                 tbb::blocked_range<index_t>(0, mesh.num_faces()), loop_body);
         }
     }
+}
+
+Eigen::VectorXd ESPPotential::gradient(
+    const ESPCollisions& collisions,
+    const CollisionMesh& mesh,
+    Eigen::ConstRef<Eigen::MatrixXd> X) const
+{
+    IPC_PROFILE_SCOPE("ho.potential_gradient");
+    assert(X.rows() == mesh.num_vertices());
+
+    if (collisions.empty()) {
+        return Eigen::VectorXd::Zero(X.size());
+    }
+
+    GradientSink sink(X.size(), X.cols());
+    gradient_terms(collisions, mesh, X, sink);
 
     Eigen::VectorXd grad;
     grad.setZero(X.size());
-    for (const auto& local_storage : storage) {
+    for (const auto& local_storage : sink.storage) {
         grad += local_storage;
     }
 
     return grad;
+}
+
+Eigen::SparseMatrix<double> ESPPotential::shape_derivative(
+    const ESPCollisions& collisions,
+    const CollisionMesh& mesh,
+    Eigen::ConstRef<Eigen::MatrixXd> X) const
+{
+    // The area weights depend only on the rest positions, so
+    // ∇ₓ(Σ w ∇ᵤP) = ∇ᵤ²(Σ w P) + Σ ∇ᵤP (∇ₓw)ᵀ.
+    Eigen::SparseMatrix<double> shape_derivative = hessian(collisions, mesh, X);
+    if (collisions.empty() || !params.area_weights) {
+        return shape_derivative;
+    }
+
+    ShapeDerivativeSink sink(mesh);
+    gradient_terms(collisions, mesh, X, sink);
+
+    for (const auto& triplets : sink.storage) {
+        Eigen::SparseMatrix<double> local_shape_derivative(X.size(), X.size());
+        local_shape_derivative.setFromTriplets(
+            triplets.begin(), triplets.end());
+        shape_derivative += local_shape_derivative;
+    }
+    return shape_derivative;
 }
 
 Eigen::SparseMatrix<double> ESPPotential::hessian(

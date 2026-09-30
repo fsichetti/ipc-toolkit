@@ -299,6 +299,83 @@ TEST_CASE(
     }
 }
 
+TEST_CASE("ESP shape derivative 3D", "[esp_potential], [esp_potential_3d]")
+{
+    auto [V, E, F, mesh] = load_wrapped_sphere();
+
+    const double dbar_factor = GENERATE(1.0, 0.7);
+    const double dhat = 0.15 / dbar_factor;
+    ESPParameters params(dhat, dbar_factor, 0);
+    const bool use_near_far = GENERATE(true, false);
+    CAPTURE(dbar_factor, use_near_far);
+    ESPPotential potential(params, use_near_far);
+
+    ESPCollisions collisions;
+    collisions.build(mesh, V, params);
+    REQUIRE(!collisions.empty());
+
+    Eigen::VectorXd test_dir(V.size());
+    for (int i = 0; i < test_dir.size(); i++) {
+        test_dir(i) = i;
+    }
+    test_dir.normalize();
+
+    const Eigen::SparseMatrix<double> dg =
+        potential.shape_derivative(collisions, mesh, V);
+
+    Eigen::MatrixXd fdg;
+    fd::finite_jacobian(
+        Eigen::VectorXd::Zero(1),
+        [&](const Eigen::VectorXd& y) {
+            const Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
+            const CollisionMesh mesh_(V_, E, F);
+            ESPCollisions collisions_;
+            collisions_.build(mesh_, V_, params);
+            return potential.gradient(collisions_, mesh_, V_);
+        },
+        fdg, fd::AccuracyOrder::FOURTH, 1e-5);
+
+    REQUIRE(
+        (fdg.col(0) - dg * test_dir).norm()
+        < std::max(fdg.norm() * 1e-6, 1e-9));
+}
+
+TEST_CASE("ESP shape derivative 2D", "[esp_potential], [esp_potential_2d]")
+{
+    const auto method = make_default_broad_phase();
+    ESPParameters params(/*dhat=*/2, 1., /*quadrature_order=*/2);
+
+    Eigen::MatrixXd V(4, 2), U(4, 2);
+    Eigen::MatrixXi E(2, 2);
+    V << -1, 0, 0, 0, 1, 0, 1.5, 0.2;
+    U << 0.1, 0.05, -0.05, 0.1, 0.02, -0.03, 0.05, 0;
+    E << 0, 1, 1, 2;
+
+    const CollisionMesh mesh = make_2d_collision_mesh(V, E);
+    ESPCollisions collisions;
+    collisions.build(mesh, V + U, params, nullptr, method.get());
+    REQUIRE(!collisions.empty());
+
+    ESPPotential potential(params);
+    const Eigen::MatrixXd dg =
+        potential.shape_derivative(collisions, mesh, V + U);
+
+    Eigen::MatrixXd fdg;
+    fd::finite_jacobian(
+        fd::flatten(V),
+        [&](const Eigen::VectorXd& x) {
+            const Eigen::MatrixXd V_ = fd::unflatten(x, 2);
+            const CollisionMesh mesh_ = make_2d_collision_mesh(V_, E);
+            ESPCollisions collisions_;
+            collisions_.build(mesh_, V_ + U, params, nullptr, method.get());
+            return potential.gradient(collisions_, mesh_, V_ + U);
+        },
+        fdg, fd::AccuracyOrder::SECOND, 1e-8);
+
+    REQUIRE(dg.squaredNorm() > 1e-8);
+    CHECK((dg - fdg).norm() / dg.norm() < 1e-4);
+}
+
 #if defined(NDEBUG) && !defined(WIN32)
 static std::string tagsopt = "[esp_potential], [esp_potential_3d]";
 #else

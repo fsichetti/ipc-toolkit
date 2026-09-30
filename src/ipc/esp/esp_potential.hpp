@@ -55,6 +55,16 @@ public:
         const PSDProjectionMethod project_hessian_to_psd =
             PSDProjectionMethod::NONE) const;
 
+    /// @brief Compute the shape derivative of the gradient.
+    /// @param collisions The set of collisions.
+    /// @param mesh The collision mesh.
+    /// @param X Vertices of the collision mesh (rest positions plus displacements).
+    /// @returns The derivative of the gradient w.r.t. the rest positions, holding the displacements fixed. This will have a size of |X|×|X|.
+    Eigen::SparseMatrix<double> shape_derivative(
+        const ESPCollisions& collisions,
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> X) const;
+
     // -- Single collision methods ---------------------------------------------
 
     /// @brief Compute the potential for a single collision.
@@ -92,6 +102,15 @@ public:
     bool get_use_near_far() const { return use_near_far; }
 
 protected:
+    /// @brief Pass each gradient term to the sink, which also sets the area
+    /// weight of the edge (2D) or face (3D) the term belongs to.
+    template <typename Sink>
+    void gradient_terms(
+        const ESPCollisions& collisions,
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> X,
+        Sink& sink) const;
+
     /// @brief GCP parameters for collision potential
     ESPParameters params;
     /// @brief Whether to normalize quadrature weights so they sum to 1
