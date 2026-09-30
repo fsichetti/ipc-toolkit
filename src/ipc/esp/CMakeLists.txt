@@ -5,6 +5,7 @@ set(SOURCES
   arbitrary_point_bvh.hpp
   arbitrary_point_esp.cpp
   arbitrary_point_esp.hpp
+  esp_collision_maps.hpp
   esp_collisions.cpp
   esp_collisions.hpp
   esp_collisions_builder.cpp

@@ -1,14 +1,16 @@
 #include "esp_collision_dict.hpp"
 
+#include <ipc/esp/esp_collision_maps.hpp>
+
 #include <array>
+#include <set>
 
 namespace ipc {
 template <PointType pType, int DIM>
 void ESPCollisionDict<pType, DIM>::initialize(
     const std::vector<index_t>& primitive_ids,
     const std::vector<index_t>& primary_vertex_ids,
-    const unordered_map<std::array<index_t, 3>, std::shared_ptr<ESPCollision>>&
-        map)
+    const ESPCollisionPairMap& map)
 {
     assert(primary_vertex_ids.size() <= m_primary_vertex_ids.size());
     for (int i = 0; i < primary_vertex_ids.size(); i++) {
@@ -30,7 +32,6 @@ void ESPCollisionDict<pType, DIM>::initialize(
     // Erase virtual vertex id, which is the largest in all ids
     if (pType != PointType::VERTEX && !map.empty()) {
         auto iter = std::prev(vids.end());
-        auto ptr = map.begin().value();
         vids.erase(iter);
     }
 

@@ -1,12 +1,12 @@
 #include "quadrature_potential.hpp"
 
-#include "absl/strings/internal/str_format/extension.h"
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/distance_type_exact.hpp"
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/distance/point_edge.hpp"
 #include "ipc/distance/point_point.hpp"
 #include "ipc/distance/point_triangle.hpp"
+#include "ipc/esp/esp_collision_maps.hpp"
 #include "ipc/esp/esp_collisions_builder.hpp"
 #include "ipc/utils/profile_registry.hpp"
 
@@ -38,7 +38,7 @@ PointPotential::build_collisions_at_vertex(
     const index_t vid,
     size_t& num_collision_pairs) const
 {
-    unordered_map<std::array<index_t, 3>, std::shared_ptr<ESPCollision>> pairs;
+    ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
     const auto& v_set = candidates.vv_set(vid);
@@ -203,7 +203,7 @@ PointPotential::build_collisions_at_edge_edge_closest_point(
     }
 #endif
 
-    unordered_map<std::array<int, 3>, std::shared_ptr<ESPCollision>> pairs;
+    ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
     if (edge_edge_distance(
@@ -588,7 +588,7 @@ PointPotential::build_collisions_at_face_center(
         / 3.;
     VertexMatrixView<3> V_view(V, face_center);
 
-    unordered_map<std::array<index_t, 3>, std::shared_ptr<ESPCollision>> pairs;
+    ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
     const auto& v_set = candidates.fv_set(fid);
@@ -649,7 +649,7 @@ PointPotential::build_collisions_at_face_interior_point(
         + lambda[2] * V.row(mesh.faces()(fid, 2));
     VertexMatrixView<3> V_view(V, q_pos);
 
-    unordered_map<std::array<index_t, 3>, std::shared_ptr<ESPCollision>> pairs;
+    ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
     const auto& v_set = candidates.fv_set(fid);
@@ -1032,7 +1032,7 @@ PointPotential::build_collisions_at_edge_qp(
         && params.integration_type
             != ESPParameters::IntegrationType::BRUTE_FORCE;
 
-    unordered_map<std::array<index_t, 3>, std::shared_ptr<ESPCollision>> pairs;
+    ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
     const double dhat2 = dhat * dhat;
 

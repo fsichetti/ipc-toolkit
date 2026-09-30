@@ -5,6 +5,7 @@
 #include <ipc/distance/distance_type_exact.hpp>
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_triangle.hpp>
+#include <ipc/esp/esp_collision_maps.hpp>
 #include <ipc/esp/quadrature_potential.hpp>
 
 #include <tbb/enumerable_thread_specific.h>
@@ -86,7 +87,7 @@ void ESPCollisionsBuilder<2>::merge(
                 total_pairs += dict->size();
             }
             // Use insert with a value_type pair to force the move path.
-            merged_collisions.edge_collisions_2d.insert(
+            merged_collisions.maps().edge_collisions_2d.insert(
                 std::make_pair(ei, std::move(dicts)));
         }
     }
@@ -494,13 +495,13 @@ void QuadratureCollisionsBuilder::merge(
         total_ee += storage.edge_edge_collisions.size();
         total_f += storage.face_collisions.size();
     }
-    merged_collisions.vertex_collisions.reserve(total_v);
-    merged_collisions.edge_edge_collisions.reserve(total_ee);
-    merged_collisions.face_collisions.reserve(total_f);
+    merged_collisions.maps().vertex_collisions.reserve(total_v);
+    merged_collisions.maps().edge_edge_collisions.reserve(total_ee);
+    merged_collisions.maps().face_collisions.reserve(total_f);
 
     for (auto& storage : local_storage) {
         for (auto& cc : storage.vertex_collisions) {
-            merged_collisions.vertex_collisions.insert(
+            merged_collisions.maps().vertex_collisions.insert(
                 std::make_pair<
                     index_t,
                     std::unique_ptr<ESPCollisionDict<PointType::VERTEX>>>(
@@ -508,11 +509,12 @@ void QuadratureCollisionsBuilder::merge(
         }
         for (auto& cc : storage.edge_edge_collisions) {
             const auto id = cc->primitive_ids();
-            merged_collisions.edge_edge_collisions.insert(
+            merged_collisions.maps().edge_edge_collisions.insert(
                 std::make_pair(std::make_pair(id[0], id[1]), std::move(cc)));
         }
         for (auto& [fi, dicts] : storage.face_collisions) {
-            merged_collisions.face_collisions.emplace(fi, std::move(dicts));
+            merged_collisions.maps().face_collisions.emplace(
+                fi, std::move(dicts));
         }
         merged_collisions.num_quadrature_collision_pairs +=
             storage.num_collision_pairs;

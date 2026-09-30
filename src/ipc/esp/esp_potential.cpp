@@ -5,6 +5,7 @@
 #include "ipc/distance/edge_edge_mollifier.hpp"
 #include "ipc/esp/collisions/esp_quadrature.hpp"
 #include "ipc/esp/collisions/vertex_matrix_view.hpp"
+#include "ipc/esp/esp_collision_maps.hpp"
 #include "ipc/esp/quadrature_potential.hpp"
 #include "ipc/gcp/distance/mollifier.hpp"
 #include "ipc/gcp/distance/point_face.hpp"
@@ -72,8 +73,8 @@ double ESPPotential::operator()(
 
         // Collect active edge ids into a flat vector for parallel indexing.
         std::vector<index_t> active_edges;
-        active_edges.reserve(collisions.edge_collisions_2d.size());
-        for (const auto& [ei, _] : collisions.edge_collisions_2d) {
+        active_edges.reserve(collisions.maps().edge_collisions_2d.size());
+        for (const auto& [ei, _] : collisions.maps().edge_collisions_2d) {
             active_edges.push_back(ei);
         }
 
@@ -83,7 +84,8 @@ double ESPPotential::operator()(
                 double& total = potential_storage.local();
                 for (size_t k = r.begin(); k < r.end(); ++k) {
                     const index_t ei = active_edges[k];
-                    const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const auto& qp_dicts =
+                        collisions.maps().edge_collisions_2d.at(ei);
                     const double L = mesh.edge_area(ei);
                     const double w_edge = params.area_weights ? L : 1.;
                     const index_t e0 = mesh.edges()(ei, 0);
@@ -165,9 +167,11 @@ double ESPPotential::operator()(
                             }
 
                             if (auto iter =
-                                    collisions.edge_edge_collisions.find(
+                                    collisions.maps().edge_edge_collisions.find(
                                         std::make_pair(edge_id, other_edge_id));
-                                iter != collisions.edge_edge_collisions.end()) {
+                                iter
+                                != collisions.maps()
+                                       .edge_edge_collisions.end()) {
 
                                 const auto dtype = iter->second->ee_dtype();
 
@@ -239,7 +243,7 @@ double ESPPotential::operator()(
                     // params.quad_order.
                     const auto& face_quad_rule = params.get_quad_rule();
                     {
-                        auto iter = collisions.face_collisions.find(f);
+                        auto iter = collisions.maps().face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
                             if (use_nf) {
@@ -251,7 +255,8 @@ double ESPPotential::operator()(
                                 total_w +=
                                     FACE_QUADRATURE_WEIGHT_SCALE * qp.weight;
                             }
-                            if (iter != collisions.face_collisions.end()) {
+                            if (iter
+                                != collisions.maps().face_collisions.end()) {
                                 local_fq_points++;
                                 const Eigen::RowVector3d q_pos =
                                     qp.lambda[0] * X.row(mesh.faces()(f, 0))
@@ -293,8 +298,9 @@ double ESPPotential::operator()(
                                 total_w += 1.;
                             }
                             if (auto iter =
-                                    collisions.vertex_collisions.find(v);
-                                iter != collisions.vertex_collisions.end()) {
+                                    collisions.maps().vertex_collisions.find(v);
+                                iter
+                                != collisions.maps().vertex_collisions.end()) {
                                 if (use_nf) {
                                     auto [vt_near, vt_far] = PointPotentialHelper::
                                         evaluate_potential_at_vertex_with_cached_collisions_nearfar(
@@ -382,8 +388,8 @@ Eigen::VectorXd ESPPotential::gradient(
             GaussLobatto::get_rule(params.quad_order);
 
         std::vector<index_t> active_edges;
-        active_edges.reserve(collisions.edge_collisions_2d.size());
-        for (const auto& [ei, _] : collisions.edge_collisions_2d) {
+        active_edges.reserve(collisions.maps().edge_collisions_2d.size());
+        for (const auto& [ei, _] : collisions.maps().edge_collisions_2d) {
             active_edges.push_back(ei);
         }
 
@@ -394,7 +400,8 @@ Eigen::VectorXd ESPPotential::gradient(
 
                 for (size_t k = r.begin(); k < r.end(); ++k) {
                     const index_t ei = active_edges[k];
-                    const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const auto& qp_dicts =
+                        collisions.maps().edge_collisions_2d.at(ei);
                     const double L = mesh.edge_area(ei);
                     const double w_edge = params.area_weights ? L : 1.;
                     const index_t e0 = mesh.edges()(ei, 0);
@@ -487,9 +494,11 @@ Eigen::VectorXd ESPPotential::gradient(
                             }
 
                             if (auto iter =
-                                    collisions.edge_edge_collisions.find(
+                                    collisions.maps().edge_edge_collisions.find(
                                         std::make_pair(edge_id, other_edge_id));
-                                iter != collisions.edge_edge_collisions.end()) {
+                                iter
+                                != collisions.maps()
+                                       .edge_edge_collisions.end()) {
 
                                 const auto dtype = iter->second->ee_dtype();
 
@@ -608,7 +617,7 @@ Eigen::VectorXd ESPPotential::gradient(
                     // Face-interior quadrature points
                     const auto& face_quad_rule = params.get_quad_rule();
                     {
-                        auto iter = collisions.face_collisions.find(f);
+                        auto iter = collisions.maps().face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
                             const double qp_weight_scale =
@@ -618,7 +627,7 @@ Eigen::VectorXd ESPPotential::gradient(
                                 total_w_near += qp_weight_scale;
                                 total_w_far += qp_weight_scale;
                             }
-                            if (iter != collisions.face_collisions.end()
+                            if (iter != collisions.maps().face_collisions.end()
                                 && qi < iter->second.size()) {
                                 const auto& dict = *iter->second[qi];
                                 const Eigen::RowVector3d q_pos =
@@ -679,8 +688,9 @@ Eigen::VectorXd ESPPotential::gradient(
                                 total_w_far += 1.0;
                             }
                             if (auto iter =
-                                    collisions.vertex_collisions.find(v);
-                                iter != collisions.vertex_collisions.end()) {
+                                    collisions.maps().vertex_collisions.find(v);
+                                iter
+                                != collisions.maps().vertex_collisions.end()) {
                                 if (use_nf_grad) {
                                     auto [P_n, P_f] = PointPotentialHelper::
                                         evaluate_potential_at_vertex_with_cached_collisions_nearfar(
@@ -810,8 +820,8 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
             GaussLobatto::get_rule(params.quad_order);
 
         std::vector<index_t> active_edges;
-        active_edges.reserve(collisions.edge_collisions_2d.size());
-        for (const auto& [ei, _] : collisions.edge_collisions_2d) {
+        active_edges.reserve(collisions.maps().edge_collisions_2d.size());
+        for (const auto& [ei, _] : collisions.maps().edge_collisions_2d) {
             active_edges.push_back(ei);
         }
 
@@ -822,7 +832,8 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
 
                 for (size_t k = r.begin(); k < r.end(); ++k) {
                     const index_t ei = active_edges[k];
-                    const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const auto& qp_dicts =
+                        collisions.maps().edge_collisions_2d.at(ei);
                     const double L = mesh.edge_area(ei);
                     const double w_edge = params.area_weights ? L : 1.;
                     const index_t e0 = mesh.edges()(ei, 0);
@@ -941,9 +952,11 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                             }
 
                             if (auto iter =
-                                    collisions.edge_edge_collisions.find(
+                                    collisions.maps().edge_edge_collisions.find(
                                         std::make_pair(edge_id, other_edge_id));
-                                iter != collisions.edge_edge_collisions.end()) {
+                                iter
+                                != collisions.maps()
+                                       .edge_edge_collisions.end()) {
 
                                 const auto dtype = iter->second->ee_dtype();
 
@@ -1110,7 +1123,7 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                     // Face-interior quadrature points
                     const auto& face_quad_rule = params.get_quad_rule();
                     {
-                        auto iter = collisions.face_collisions.find(f);
+                        auto iter = collisions.maps().face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
                             total_w += FACE_QUADRATURE_WEIGHT_SCALE * qp.weight;
@@ -1120,7 +1133,7 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                 total_w_far +=
                                     FACE_QUADRATURE_WEIGHT_SCALE * qp.weight;
                             }
-                            if (iter != collisions.face_collisions.end()
+                            if (iter != collisions.maps().face_collisions.end()
                                 && qi < iter->second.size()) {
                                 const auto& dict = *iter->second[qi];
                                 const Eigen::RowVector3d q_pos =
@@ -1208,8 +1221,9 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                 total_w_far += 1.0;
                             }
                             if (auto iter =
-                                    collisions.vertex_collisions.find(v);
-                                iter != collisions.vertex_collisions.end()) {
+                                    collisions.maps().vertex_collisions.find(v);
+                                iter
+                                != collisions.maps().vertex_collisions.end()) {
                                 const auto& dict = *iter->second;
                                 ConstHessEntry entry;
                                 entry.vertex_ids = &dict.vertex_ids();

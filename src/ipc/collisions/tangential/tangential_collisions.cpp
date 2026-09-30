@@ -8,6 +8,7 @@
 #include <ipc/distance/point_triangle.hpp>
 #include <ipc/esp/collisions/esp_quadrature.hpp>
 #include <ipc/esp/collisions/vertex_matrix_view.hpp>
+#include <ipc/esp/esp_collision_maps.hpp>
 #include <ipc/esp/esp_parameters.hpp>
 #include <ipc/esp/esp_potential.hpp>
 #include <ipc/friction/smooth_mu.hpp>
@@ -501,7 +502,8 @@ void TangentialCollisions::build(
                                                  : 0.0;
         };
 
-        for (const auto& [ei, qp_dicts] : collisions.edge_collisions_2d) {
+        for (const auto& [ei, qp_dicts] :
+             collisions.maps().edge_collisions_2d) {
             const index_t e0 = edges(ei, 0);
             const index_t e1 = edges(ei, 1);
             const double L = mesh.edge_length(ei);
@@ -691,7 +693,7 @@ void TangentialCollisions::build(
         if (normalize_weights) {
             // Add per-face sum of active EE mollifiers (EA_EB only).
             for (const auto& [ei_pair, dict_ptr] :
-                 collisions.edge_edge_collisions) {
+                 collisions.maps().edge_edge_collisions) {
                 if (dict_ptr->ee_dtype() != EdgeEdgeDistanceType::EA_EB) {
                     continue;
                 }
@@ -749,7 +751,8 @@ void TangentialCollisions::build(
         // Skip when face quadrature is active (quad_order > 0), which
         // already includes vertices, matching the normal potential's behavior.
         if (!has_face_quad) {
-            for (const auto& [vi, dict_ptr] : collisions.vertex_collisions) {
+            for (const auto& [vi, dict_ptr] :
+                 collisions.maps().vertex_collisions) {
                 VertexMatrixView<3> V_view(vertices);
                 const double v_w = v_outer_w(vi);
                 for (int j = 0; j < dict_ptr->size(); j++) {
@@ -834,7 +837,7 @@ void TangentialCollisions::build(
 
         // ---- EDGE dicts: virtual vertex at edge-edge closest point ----
         for (const auto& [ei_pair, dict_ptr] :
-             collisions.edge_edge_collisions) {
+             collisions.maps().edge_edge_collisions) {
             const auto [e0, e1] = ei_pair;
             const auto dtype = dict_ptr->ee_dtype();
             const index_t e00 = edges(e0, 0), e01 = edges(e0, 1);
@@ -1044,7 +1047,7 @@ void TangentialCollisions::build(
         }
 
         // ---- FACE dicts: virtual vertex at face quadrature point ----
-        for (const auto& [fi, dicts] : collisions.face_collisions) {
+        for (const auto& [fi, dicts] : collisions.maps().face_collisions) {
             const index_t f0 = faces(fi, 0);
             const index_t f1 = faces(fi, 1);
             const index_t f2 = faces(fi, 2);

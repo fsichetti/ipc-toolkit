@@ -1,5 +1,6 @@
 #include "esp_collisions.hpp"
 
+#include "esp_collision_maps.hpp"
 #include "esp_collisions_builder.hpp"
 
 #include <ipc/distance/edge_edge.hpp>
@@ -91,6 +92,10 @@ namespace {
         return ev_candidates;
     }
 } // namespace
+
+ESPCollisions::ESPCollisions() : m_maps(std::make_unique<Maps>()) { }
+
+ESPCollisions::~ESPCollisions() = default;
 
 void ESPCollisions::build(
     const Candidates& candidates,
@@ -186,13 +191,13 @@ void ESPCollisions::build(
 
     size_t n_face_dicts = 0;
     size_t vert_pairs = 0, edge_pairs = 0, face_pairs = 0;
-    for (const auto& cc : vertex_collisions) {
+    for (const auto& cc : m_maps->vertex_collisions) {
         vert_pairs += cc.second->size();
     }
-    for (const auto& cc : edge_edge_collisions) {
+    for (const auto& cc : m_maps->edge_edge_collisions) {
         edge_pairs += cc.second->size();
     }
-    for (const auto& fc : face_collisions) {
+    for (const auto& fc : m_maps->face_collisions) {
         n_face_dicts += fc.second.size();
         for (const auto& dict_ptr : fc.second) {
             face_pairs += dict_ptr->size();
@@ -201,10 +206,10 @@ void ESPCollisions::build(
     auto& reg = ProfileRegistry::instance();
     reg.add_value(
         "ho.collision_set.vertex_dicts",
-        static_cast<double>(vertex_collisions.size()));
+        static_cast<double>(m_maps->vertex_collisions.size()));
     reg.add_value(
         "ho.collision_set.edge_dicts",
-        static_cast<double>(edge_edge_collisions.size()));
+        static_cast<double>(m_maps->edge_edge_collisions.size()));
     reg.add_value(
         "ho.collision_set.face_dicts", static_cast<double>(n_face_dicts));
     reg.add_value(
@@ -296,18 +301,18 @@ void ESPCollisions::build(
 size_t ESPCollisions::size() const
 {
     size_t size = 0;
-    for (const auto& cc : vertex_collisions) {
+    for (const auto& cc : m_maps->vertex_collisions) {
         size += cc.second->size();
     }
-    for (const auto& cc : edge_edge_collisions) {
+    for (const auto& cc : m_maps->edge_edge_collisions) {
         size += cc.second->size();
     }
-    for (const auto& cc : face_collisions) {
+    for (const auto& cc : m_maps->face_collisions) {
         for (const auto& dict_ptr : cc.second) {
             size += dict_ptr->size();
         }
     }
-    for (const auto& cc : edge_collisions_2d) {
+    for (const auto& cc : m_maps->edge_collisions_2d) {
         for (const auto& dict_ptr : cc.second) {
             size += dict_ptr->size();
         }
@@ -316,15 +321,17 @@ size_t ESPCollisions::size() const
 }
 bool ESPCollisions::empty() const
 {
-    return vertex_collisions.empty() && edge_edge_collisions.empty()
-        && face_collisions.empty() && edge_collisions_2d.empty();
+    return m_maps->vertex_collisions.empty()
+        && m_maps->edge_edge_collisions.empty()
+        && m_maps->face_collisions.empty()
+        && m_maps->edge_collisions_2d.empty();
 }
 void ESPCollisions::clear()
 {
-    vertex_collisions.clear();
-    edge_edge_collisions.clear();
-    face_collisions.clear();
-    edge_collisions_2d.clear();
+    m_maps->vertex_collisions.clear();
+    m_maps->edge_edge_collisions.clear();
+    m_maps->face_collisions.clear();
+    m_maps->edge_collisions_2d.clear();
 }
 
 std::string ESPCollisions::to_string(
@@ -334,7 +341,7 @@ std::string ESPCollisions::to_string(
 {
     std::stringstream ss;
 
-    for (const auto& ccs : vertex_collisions) {
+    for (const auto& ccs : m_maps->vertex_collisions) {
         for (int i = 0; i < (*ccs.second).size(); i++) {
             const auto& cc = (*ccs.second)[i];
             ss << "\n";
@@ -349,7 +356,7 @@ std::string ESPCollisions::to_string(
             }
         }
     }
-    for (const auto& ccs : edge_edge_collisions) {
+    for (const auto& ccs : m_maps->edge_edge_collisions) {
         for (int i = 0; i < (*ccs.second).size(); i++) {
             const auto& cc = (*ccs.second)[i];
             ss << "\n";
@@ -360,7 +367,7 @@ std::string ESPCollisions::to_string(
             }
         }
     }
-    for (const auto& ccs : face_collisions) {
+    for (const auto& ccs : m_maps->face_collisions) {
         for (const auto& dict_ptr : ccs.second) {
             for (int i = 0; i < dict_ptr->size(); i++) {
                 const auto& cc = (*dict_ptr)[i];
@@ -417,7 +424,7 @@ double ESPCollisions::compute_minimum_distance(
 std::map<size_t, size_t> ESPCollisions::edge_id_count_distribution() const
 {
     unordered_map<index_t, size_t> counts;
-    for (const auto& [key, _] : edge_edge_collisions) {
+    for (const auto& [key, _] : m_maps->edge_edge_collisions) {
         counts[key.first]++;
     }
 
@@ -431,7 +438,7 @@ std::map<size_t, size_t> ESPCollisions::edge_id_count_distribution() const
 Eigen::VectorXd ESPCollisions::edge_collision_counts(size_t num_edges) const
 {
     Eigen::VectorXd counts = Eigen::VectorXd::Zero(num_edges);
-    for (const auto& [key, _] : edge_edge_collisions) {
+    for (const auto& [key, _] : m_maps->edge_edge_collisions) {
         counts(key.first)++;
     }
     return counts;

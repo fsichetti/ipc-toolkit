@@ -2,12 +2,16 @@
 #include "esp_collision_template.hpp"
 
 #include <ipc/distance/distance_type.hpp>
-#include <ipc/utils/unordered_map_and_set.hpp>
 
 #include <array>
 #include <cstdint>
+#include <map>
+#include <vector>
 
 namespace ipc {
+
+/// @brief Defined in the internal header esp_collision_maps.hpp.
+struct ESPCollisionPairMap;
 
 enum class PointType : std::uint8_t { VERTEX, EDGE, FACE };
 
@@ -40,9 +44,7 @@ public:
     void initialize(
         const std::vector<index_t>& primitive_ids,
         const std::vector<index_t>& primary_vertex_ids,
-        const unordered_map<
-            std::array<index_t, 3>,
-            std::shared_ptr<ESPCollision>>& map);
+        const ESPCollisionPairMap& map);
 
     const std::array<index_t, 4>& primary_vertex_ids() const
     {

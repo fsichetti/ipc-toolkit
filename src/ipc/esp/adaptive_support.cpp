@@ -2,6 +2,7 @@
 
 #include "collisions/esp_quadrature.hpp"
 #include "collisions/vertex_matrix_view.hpp"
+#include "esp_collision_maps.hpp"
 #include "esp_collisions.hpp"
 
 #include <ipc/candidates/candidates.hpp>
@@ -57,8 +58,8 @@ AdaptiveSupport::AdaptiveSupport(
         for (index_t f = 0; f < static_cast<index_t>(mesh.num_faces()); f++) {
             // Face interior quadrature points
             if (!face_quad_rule.empty()) {
-                auto fit = collisions.face_collisions.find(f);
-                if (fit != collisions.face_collisions.end()) {
+                auto fit = collisions.maps().face_collisions.find(f);
+                if (fit != collisions.maps().face_collisions.end()) {
                     for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                         if (qi >= fit->second.size()) {
                             continue;
@@ -85,8 +86,8 @@ AdaptiveSupport::AdaptiveSupport(
                 // Vertex collisions when face quadrature is not used
                 for (int lv = 0; lv < 3; lv++) {
                     const index_t v = mesh.faces()(f, lv);
-                    auto vit = collisions.vertex_collisions.find(v);
-                    if (vit == collisions.vertex_collisions.end()) {
+                    auto vit = collisions.maps().vertex_collisions.find(v);
+                    if (vit == collisions.maps().vertex_collisions.end()) {
                         continue;
                     }
                     const auto& dict = *vit->second;
@@ -114,9 +115,9 @@ AdaptiveSupport::AdaptiveSupport(
                         continue;
                     }
 
-                    auto eit = collisions.edge_edge_collisions.find(
+                    auto eit = collisions.maps().edge_edge_collisions.find(
                         std::make_pair(edge_id, other_edge_id));
-                    if (eit == collisions.edge_edge_collisions.end()) {
+                    if (eit == collisions.maps().edge_edge_collisions.end()) {
                         continue;
                     }
 
@@ -190,7 +191,8 @@ AdaptiveSupport::AdaptiveSupport(
         const GaussLobatto::Rule& rule =
             GaussLobatto::get_rule(params.quad_order);
 
-        for (const auto& [ei, qp_dicts] : collisions.edge_collisions_2d) {
+        for (const auto& [ei, qp_dicts] :
+             collisions.maps().edge_collisions_2d) {
             const index_t e0 = mesh.edges()(ei, 0);
             const index_t e1 = mesh.edges()(ei, 1);
             for (size_t qi = 0; qi < qp_dicts.size(); qi++) {

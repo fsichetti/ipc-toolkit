@@ -2,6 +2,7 @@
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/esp/esp_collisions.hpp>
+#include <ipc/utils/unordered_map_and_set.hpp>
 
 #include <Eigen/Core>
 #include <tbb/enumerable_thread_specific.h>
