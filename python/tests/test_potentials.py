@@ -250,15 +250,15 @@ class TestGCPCollisionsAdaptiveDhat(unittest.TestCase):
             self.mesh, self.rest, self.params, ipctk.LBVH())
 
 
-class TestGCPPotentialNaming(unittest.TestCase):
-    """The Python class was previously exposed as "SmoothPotential", which did
-    not match the C++ name. Guard the rename in both directions."""
-
-    def test_matches_cpp_name(self):
-        self.assertTrue(hasattr(ipctk, "GCPPotential"))
-
-    def test_old_name_removed(self):
-        self.assertFalse(hasattr(ipctk, "SmoothPotential"))
+class TestGCPAliases(unittest.TestCase):
+    def test_smooth_names_alias_gcp(self):
+        for old, new in [
+            ("SmoothCollision2", "GCPCollision2"),
+            ("SmoothCollisions", "GCPCollisions"),
+            ("SmoothContactParameters", "GCPParameters"),
+            ("SmoothContactPotential", "GCPPotential"),
+        ]:
+            self.assertIs(getattr(ipctk, old), getattr(ipctk, new))
 
 
 class TestESPPotential(unittest.TestCase):

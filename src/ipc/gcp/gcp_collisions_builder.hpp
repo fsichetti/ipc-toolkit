@@ -102,4 +102,9 @@ public:
         edge_vert_3_to_id;
 };
 
+template <int dim>
+using SmoothCollisionsBuilder [[deprecated(
+    "SmoothCollisionsBuilder is deprecated. Use GCPCollisionsBuilder instead.")]] =
+    GCPCollisionsBuilder<dim>;
+
 } // namespace ipc

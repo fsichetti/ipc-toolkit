@@ -130,6 +130,10 @@ protected:
     std::vector<index_t> m_vertex_ids;
 };
 
+using SmoothCollision
+    [[deprecated("SmoothCollision is deprecated. Use GCPCollision instead.")]] =
+        GCPCollision;
+
 /// @brief Templated class for various types of contact pairs
 template <typename PrimitiveA, typename PrimitiveB>
 class GCPCollisionTemplate : public GCPCollision {

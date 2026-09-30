@@ -159,4 +159,8 @@ public:
     Candidates m_candidates;
 };
 
+using SmoothCollisions [[deprecated(
+    "SmoothCollisions is deprecated. Use GCPCollisions instead.")]] =
+    GCPCollisions;
+
 } // namespace ipc

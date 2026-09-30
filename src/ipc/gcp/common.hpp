@@ -103,4 +103,8 @@ private:
     double m_adaptive_dhat_ratio = 0.5;
 };
 
+using SmoothContactParameters [[deprecated(
+    "SmoothContactParameters is deprecated. Use GCPParameters instead.")]] =
+    GCPParameters;
+
 } // namespace ipc

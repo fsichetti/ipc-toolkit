@@ -81,4 +81,8 @@ protected:
     GCPParameters params;
 };
 
+using SmoothContactPotential [[deprecated(
+    "SmoothContactPotential is deprecated. Use GCPPotential instead.")]] =
+    GCPPotential;
+
 } // namespace ipc
