@@ -18,7 +18,8 @@ struct PairHash {
     }
 };
 
-using MapCanCollide = unordered_map<std::pair<size_t, size_t>, bool, PairHash>;
+using MapCanCollide =
+    std::unordered_map<std::pair<size_t, size_t>, bool, PairHash>;
 
 CollisionFilter
 make_sparse_filter(MapCanCollide explicit_values, bool default_value)
