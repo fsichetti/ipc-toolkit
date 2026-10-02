@@ -222,4 +222,9 @@ private:
     std::unique_ptr<PrimitiveB> primitive_b;
 };
 
+template <typename PrimitiveA, typename PrimitiveB>
+using SmoothCollisionTemplate [[deprecated(
+    "SmoothCollisionTemplate is deprecated. Use GCPCollisionTemplate instead.")]] =
+    GCPCollisionTemplate<PrimitiveA, PrimitiveB>;
+
 } // namespace ipc

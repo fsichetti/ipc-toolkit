@@ -431,7 +431,8 @@ Eigen::VectorXd ESPPotential::gradient(
                     double total_w = 0;
                     double total_p = 0;
                     double total_w_near = 0, total_p_near = 0;
-                    double total_w_far = 0, total_p_far = 0;
+                    double total_w_far = 0;
+                    [[maybe_unused]] double total_p_far = 0; // asserts only
 
                     std::unique_ptr<NearFarBarrier> nf_barrier;
                     if (use_nf_grad) {
@@ -869,7 +870,8 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                     double total_w = 0;
                     double total_p = 0;
                     double total_w_near = 0, total_p_near = 0;
-                    double total_w_far = 0, total_p_far = 0;
+                    double total_w_far = 0;
+                    [[maybe_unused]] double total_p_far = 0; // asserts only
 
                     // Construct NearFarBarrier if needed
                     std::unique_ptr<NearFarBarrier> nf_barrier;

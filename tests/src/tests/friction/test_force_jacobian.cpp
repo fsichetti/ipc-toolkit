@@ -859,11 +859,13 @@ TEST_CASE("ESP friction force jacobian 3D", "[friction-esp][force-jacobian]")
             make_vertex_quad_rule(), make_vertex_plus_centroid_quad_rule());
     }
 
-    auto [X, E, F, upper_vertices] =
+    const ESPFrictionSceneData3D scene =
         esp_friction_scene_generator_3d(dhat * 0.5);
+    const Eigen::MatrixXd& X = scene.X;
+    const std::vector<int>& upper_vertices = scene.upper_vertices;
 
     const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(X.rows(), X.cols());
-    CollisionMesh mesh(X, E, F);
+    CollisionMesh mesh(X, scene.E, scene.F);
     ESPCollisions collisions;
     collisions.build(mesh, X + Ut, params);
     REQUIRE(!collisions.empty());

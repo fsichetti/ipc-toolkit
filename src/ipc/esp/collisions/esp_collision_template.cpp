@@ -88,7 +88,7 @@ ESPCollisionTemplate<Vertex3, Vertex3>::ESPCollisionTemplate(
 template <typename PrimitiveA, typename PrimitiveB>
 index_t ESPCollisionTemplate<PrimitiveA, PrimitiveB>::vertex_id(index_t i) const
 {
-    if (i < (index_t)primitive_a.n_vertices()) {
+    if (i < static_cast<index_t>(primitive_a.n_vertices())) {
         return primitive_a.vertex_id(i);
     }
     i -= primitive_a.n_vertices();

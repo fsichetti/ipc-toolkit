@@ -35,7 +35,10 @@ void TangentialCollisions::build(
 
     clear();
 
-    auto& [FC_vv, FC_ev, FC_ee, FC_fv, FC_pv] = *this;
+    auto& FC_vv = vv_collisions;
+    auto& FC_ev = ev_collisions;
+    auto& FC_ee = ee_collisions;
+    auto& FC_fv = fv_collisions;
 
     auto assign_ev_mu = [&](EdgeVertexTangentialCollision& tc) {
         const auto& [vi, e0i, e1i, _] = tc.vertex_ids(edges, faces);
@@ -79,8 +82,10 @@ void TangentialCollisions::build(
                                                  : 0.0;
         };
 
-        for (const auto& [ei, qp_dicts] :
+        for (const auto& edge_collisions :
              collisions.maps().edge_collisions_2d) {
+            const index_t ei = edge_collisions.first;
+            const auto& qp_dicts = edge_collisions.second;
             const index_t e0 = edges(ei, 0);
             const index_t e1 = edges(ei, 1);
             const double L = mesh.edge_length(ei);
@@ -271,7 +276,8 @@ void TangentialCollisions::build(
                 if (dict_ptr->ee_dtype() != EdgeEdgeDistanceType::EA_EB) {
                     continue;
                 }
-                const auto [e0, e1] = ei_pair;
+                const index_t e0 = ei_pair.first;
+                const index_t e1 = ei_pair.second;
                 const index_t e00 = edges(e0, 0), e01 = edges(e0, 1);
                 const index_t e10 = edges(e1, 0), e11 = edges(e1, 1);
                 if (e00 == e10 || e00 == e11 || e01 == e10 || e01 == e11) {
@@ -407,7 +413,8 @@ void TangentialCollisions::build(
         // ---- EDGE dicts: virtual vertex at edge-edge closest point ----
         for (const auto& [ei_pair, dict_ptr] :
              collisions.maps().edge_edge_collisions) {
-            const auto [e0, e1] = ei_pair;
+            const index_t e0 = ei_pair.first;
+            const index_t e1 = ei_pair.second;
             const auto dtype = dict_ptr->ee_dtype();
             const index_t e00 = edges(e0, 0), e01 = edges(e0, 1);
             const index_t e10 = edges(e1, 0), e11 = edges(e1, 1);
@@ -616,7 +623,9 @@ void TangentialCollisions::build(
         }
 
         // ---- FACE dicts: virtual vertex at face quadrature point ----
-        for (const auto& [fi, dicts] : collisions.maps().face_collisions) {
+        for (const auto& face_collisions : collisions.maps().face_collisions) {
+            const index_t fi = face_collisions.first;
+            const auto& dicts = face_collisions.second;
             const index_t f0 = faces(fi, 0);
             const index_t f1 = faces(fi, 1);
             const index_t f2 = faces(fi, 2);

@@ -223,7 +223,9 @@ TEST_CASE(
     "Convergent Quadrature Gradient and Hessian",
     "[esp_potential], [esp_potential_3d]")
 {
-    auto [V, E, F, mesh] = load_wrapped_sphere();
+    TriMeshData data = load_wrapped_sphere();
+    Eigen::MatrixXd& V = data.V;
+    CollisionMesh& mesh = data.mesh;
 
     const double dbar_factor = GENERATE(1.0, 0.7, 0.3);
     // Keep dbar = dhat * dbar_factor ≈ 0.15 so the active contact set is
@@ -292,7 +294,9 @@ TEST_CASE(
     "Convergent Quadrature Gradient and Hessian Expensive",
     "[.][esp_potential][esp_potential_3d]")
 {
-    auto [V, E, F, mesh] = load_wrapped_sphere();
+    TriMeshData data = load_wrapped_sphere();
+    Eigen::MatrixXd& V = data.V;
+    CollisionMesh& mesh = data.mesh;
 
     const double dhat = 0.1;
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
@@ -371,7 +375,9 @@ TEST_CASE(
     "[esp_potential], [esp_potential_3d]")
 {
     const auto method = make_default_broad_phase();
-    auto [V, E, F, mesh] = load_wrapped_sphere();
+    TriMeshData data = load_wrapped_sphere();
+    Eigen::MatrixXd& V = data.V;
+    CollisionMesh& mesh = data.mesh;
 
     const double dhat = 0.15;
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
@@ -430,7 +436,10 @@ TEST_CASE(
     "Convergent Quadrature Face Hessian", "[esp_potential], [esp_potential_3d]")
 {
     const auto method = make_default_broad_phase();
-    auto [V, E, F, mesh] = load_wrapped_sphere();
+    TriMeshData data = load_wrapped_sphere();
+    Eigen::MatrixXd& V = data.V;
+    Eigen::MatrixXi& F = data.F;
+    CollisionMesh& mesh = data.mesh;
 
     const double dhat = 0.15;
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
@@ -845,7 +854,9 @@ TEST_CASE(
     "Face Quadrature Gradient and Hessian",
     "[esp_potential], [esp_potential_3d]")
 {
-    auto [V, E, F, mesh] = load_wrapped_sphere();
+    TriMeshData data = load_wrapped_sphere();
+    Eigen::MatrixXd& V = data.V;
+    CollisionMesh& mesh = data.mesh;
 
     const double dhat = 0.15;
     const int quad_order = GENERATE(
@@ -1029,6 +1040,8 @@ TEST_CASE("NearFarBarrier decomposition", "[esp_potential][barrier]")
     case BarrierType::InversePower2:
         run_test(InversePowerBarrier(2.0));
         break;
+    default:
+        FAIL("Unknown barrier type");
     }
 }
 

@@ -185,6 +185,70 @@ public:
         const DiffWRT wrt,
         const bool no_mu = false) const;
 
+    // -- Deprecated names from before the smooth_contact -> gcp rename -------
+
+    [[deprecated("smooth_contact_force is deprecated. Use gcp_force instead.")]]
+    Eigen::VectorXd smooth_contact_force(
+        const TangentialCollisions& collisions,
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> rest_positions,
+        Eigen::ConstRef<Eigen::MatrixXd> lagged_displacements,
+        Eigen::ConstRef<Eigen::MatrixXd> velocities,
+        const double dmin = 0,
+        const bool no_mu = false) const
+    {
+        return gcp_force(
+            collisions, mesh, rest_positions, lagged_displacements, velocities,
+            dmin, no_mu);
+    }
+
+    [[deprecated(
+        "smooth_contact_force_jacobian is deprecated. Use "
+        "gcp_force_jacobian instead.")]]
+    Eigen::SparseMatrix<double> smooth_contact_force_jacobian(
+        const TangentialCollisions& collisions,
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> rest_positions,
+        Eigen::ConstRef<Eigen::MatrixXd> lagged_displacements,
+        Eigen::ConstRef<Eigen::MatrixXd> velocities,
+        const GCPParameters& params,
+        const DiffWRT wrt,
+        const double dmin = 0,
+        const bool no_mu = false) const
+    {
+        return gcp_force_jacobian(
+            collisions, mesh, rest_positions, lagged_displacements, velocities,
+            params, wrt, dmin, no_mu);
+    }
+
+    [[deprecated("smooth_contact_force is deprecated. Use gcp_force instead.")]]
+    VectorMaxNd smooth_contact_force(
+        const TangentialCollision& collision,
+        Eigen::ConstRef<VectorMaxNd> rest_positions,
+        Eigen::ConstRef<VectorMaxNd> lagged_displacements,
+        Eigen::ConstRef<VectorMaxNd> velocities,
+        const bool no_mu = false,
+        const bool no_contact_force_multiplier = false) const
+    {
+        return gcp_force(
+            collision, rest_positions, lagged_displacements, velocities, no_mu,
+            no_contact_force_multiplier);
+    }
+
+    [[deprecated(
+        "smooth_contact_force_jacobian_unit is deprecated. Use "
+        "gcp_force_jacobian_unit instead.")]]
+    MatrixMaxNd smooth_contact_force_jacobian_unit(
+        const TangentialCollision& collision,
+        Eigen::ConstRef<VectorMaxNd> lagged_positions,
+        Eigen::ConstRef<VectorMaxNd> velocities,
+        const DiffWRT wrt,
+        const bool no_mu = false) const
+    {
+        return gcp_force_jacobian_unit(
+            collision, lagged_positions, velocities, wrt, no_mu);
+    }
+
 protected:
     /// @brief Compute the value of the ∫ μ(y) f₁(y) dy, where f₁ is the first derivative of the smooth mollifier.
     /// @param x The tangential relative speed.
