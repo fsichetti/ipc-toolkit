@@ -68,18 +68,15 @@ public:
 
     double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive = nullptr) const override;
+        const ESPParameters& params) const override;
 
     VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive = nullptr) const override;
+        const ESPParameters& params) const override;
 
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive = nullptr) const override;
+        const ESPParameters& params) const override;
 
     double
     compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
@@ -87,7 +84,6 @@ public:
     std::pair<double, double> operator_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const override
     {
         return { 0.0, 0.0 };
@@ -97,7 +93,6 @@ public:
     gradient_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const override
     {
         VectorMax<double, ELEMENT_SIZE> zero =
@@ -111,7 +106,6 @@ public:
     hessian_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& /*params*/,
-        const AdaptiveSupport* /*adaptive*/,
         const NearFarBarrier* /*near_far*/) const override
     {
         int n = positions.size();

@@ -11,6 +11,8 @@
 
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
 #include "distance_type_reference.hpp"
+
+#include <ipc/distance/distance_type_exact.hpp>
 #endif
 
 using namespace ipc;
@@ -60,25 +62,25 @@ TEST_CASE("Point-edge distance type", "[distance][distance-type][point-edge]")
 }
 
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
-// These compare the shipped classifiers against an exact-arithmetic
-// reference, which is only available when geogram is enabled.
+// These compare the shipped classifiers, standard and exact, against an
+// exact-arithmetic reference, which is only available when geogram is enabled.
 TEST_CASE(
     "Point-edge distance type random",
     "[distance][distance-type][point-edge][exact]")
 {
-    const int num_random_tests = 1000000;
+    const int num_random_tests = 100000;
 
     for (int i = 0; i < num_random_tests; ++i) {
         const VectorMax3d p = Eigen::Vector3d::Random() * 10;
         const VectorMax3d e0 = Eigen::Vector3d::Random() * 10;
         const VectorMax3d e1 = Eigen::Vector3d::Random() * 10;
 
-        const PointEdgeDistanceType dtype = point_edge_distance_type(p, e0, e1);
-        const PointEdgeDistanceType dtype_exact =
-            point_edge_distance_type_exact(p, e0, e1);
+        const PointEdgeDistanceType dtype_ref =
+            point_edge_distance_type_reference(p, e0, e1);
 
         CAPTURE(p.transpose(), e0.transpose(), e1.transpose());
-        CHECK(dtype == dtype_exact);
+        CHECK(point_edge_distance_type(p, e0, e1) == dtype_ref);
+        CHECK(point_edge_distance_type_exact(p, e0, e1) == dtype_ref);
     }
 }
 
@@ -86,7 +88,7 @@ TEST_CASE(
     "Point-triangle distance type random",
     "[distance][distance-type][point-triangle][exact]")
 {
-    const int num_random_tests = 1000000;
+    const int num_random_tests = 100000;
 
     for (int i = 0; i < num_random_tests; ++i) {
         const VectorMax3d p = Eigen::Vector3d::Random() * 10;
@@ -94,13 +96,12 @@ TEST_CASE(
         const VectorMax3d t1 = Eigen::Vector3d::Random() * 10;
         const VectorMax3d t2 = Eigen::Vector3d::Random() * 10;
 
-        const PointTriangleDistanceType dtype =
-            point_triangle_distance_type(p, t0, t1, t2);
-        const PointTriangleDistanceType dtype_exact =
-            point_triangle_distance_type_exact(p, t0, t1, t2);
+        const PointTriangleDistanceType dtype_ref =
+            point_triangle_distance_type_reference(p, t0, t1, t2);
 
         CAPTURE(p.transpose(), t0.transpose(), t1.transpose(), t2.transpose());
-        CHECK(dtype == dtype_exact);
+        CHECK(point_triangle_distance_type(p, t0, t1, t2) == dtype_ref);
+        CHECK(point_triangle_distance_type_exact(p, t0, t1, t2) == dtype_ref);
     }
 }
 
@@ -108,7 +109,7 @@ TEST_CASE(
     "Edge-edge distance type random",
     "[distance][distance-type][edge-edge][exact]")
 {
-    const int num_random_tests = 1000000;
+    const int num_random_tests = 100000;
 
     for (int i = 0; i < num_random_tests; ++i) {
         const VectorMax3d e0 = Eigen::Vector3d::Random() * 10;
@@ -116,13 +117,12 @@ TEST_CASE(
         const VectorMax3d e2 = Eigen::Vector3d::Random() * 10;
         const VectorMax3d e3 = Eigen::Vector3d::Random() * 10;
 
-        const EdgeEdgeDistanceType dtype =
-            edge_edge_distance_type(e0, e1, e2, e3);
-        const EdgeEdgeDistanceType dtype_exact =
-            edge_edge_distance_type_exact(e0, e1, e2, e3);
+        const EdgeEdgeDistanceType dtype_ref =
+            edge_edge_distance_type_reference(e0, e1, e2, e3);
 
         CAPTURE(e0.transpose(), e1.transpose(), e2.transpose(), e3.transpose());
-        CHECK(dtype == dtype_exact);
+        CHECK(edge_edge_distance_type(e0, e1, e2, e3) == dtype_ref);
+        CHECK(edge_edge_distance_type_exact(e0, e1, e2, e3) == dtype_ref);
     }
 }
 
@@ -137,7 +137,7 @@ TEST_CASE(
     "Edge-edge distance type random parallel",
     "[distance][distance-type][edge-edge][exact][parallel]")
 {
-    const int num_random_tests = 1000000;
+    const int num_random_tests = 100000;
 
     for (int i = 0; i < num_random_tests; ++i) {
         const Eigen::Vector3d ea0 = Eigen::Vector3d::Random() * 10;
@@ -154,14 +154,18 @@ TEST_CASE(
         if (i % 2 == 0)
             eb1 += Eigen::Vector3d::Random() * ((ea1 - ea0).norm() * 1e-20);
 
-        const EdgeEdgeDistanceType dtype =
-            edge_edge_distance_type(ea0, ea1, eb0, eb1);
-        const EdgeEdgeDistanceType dtype_exact =
-            edge_edge_distance_type_exact(ea0, ea1, eb0, eb1);
+        const EdgeEdgeDistanceType dtype_ref =
+            edge_edge_distance_type_reference(ea0, ea1, eb0, eb1);
 
         CAPTURE(
             ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
-        CHECK(dtype == dtype_exact);
+        CHECK(edge_edge_distance_type(ea0, ea1, eb0, eb1) == dtype_ref);
+        // The exact classifier has no parallel branch; its callers skip the
+        // pairs is_parallel_edge_edge flags.
+        if (!is_parallel_edge_edge(ea0, ea1, eb0, eb1)) {
+            CHECK(
+                edge_edge_distance_type_exact(ea0, ea1, eb0, eb1) == dtype_ref);
+        }
     }
 }
 

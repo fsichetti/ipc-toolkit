@@ -21,7 +21,6 @@
 
 #include <atomic>
 #include <fstream>
-#include <iostream>
 
 namespace ipc {
 
@@ -74,7 +73,6 @@ void Candidates::build(
     }
 
     const int dim = vertices.cols();
-    m_mesh = mesh;
 
     clear();
 
@@ -162,7 +160,6 @@ void Candidates::build(
     }
 
     const int dim = vertices_t0.cols();
-    m_mesh = mesh;
 
     clear();
 
@@ -518,6 +515,7 @@ void Candidates::clear()
     ef_candidates.clear();
     ff_candidates.clear();
     pv_candidates.clear();
+    m_sets.reset();
 }
 
 CollisionStencil& Candidates::operator[](size_t i)
@@ -771,22 +769,22 @@ void Candidates::convert_candidates_to_sets()
     }
 }
 
-std::set<index_t> Candidates::vv_set(index_t id) const
+std::set<index_t>
+Candidates::vv_set(const CollisionMesh& mesh, index_t id) const
 {
     if (!m_sets) {
         return {};
     }
 
-    assert(m_mesh.num_vertices());
     std::set<index_t> out;
     if (auto iter = m_sets->vv.find(id); iter != m_sets->vv.end()) {
         out = iter->second;
     }
 
-    if (m_mesh.dim() == 2) {
+    if (mesh.dim() == 2) {
         for (const index_t ej : ve_set(id)) {
-            out.insert(m_mesh.edges()(ej, 0));
-            out.insert(m_mesh.edges()(ej, 1));
+            out.insert(mesh.edges()(ej, 0));
+            out.insert(mesh.edges()(ej, 1));
         }
     }
     out.erase(id);
@@ -815,35 +813,35 @@ std::set<index_t> Candidates::vf_set(index_t id) const
     return {};
 }
 
-std::set<index_t> Candidates::ev_set(index_t id) const
+std::set<index_t>
+Candidates::ev_set(const CollisionMesh& mesh, index_t id) const
 {
     if (!m_sets) {
         return {};
     }
 
-    assert(m_mesh.num_vertices());
     std::set<index_t> out;
     if (auto iter = m_sets->ev.find(id); iter != m_sets->ev.end()) {
         out = iter->second;
     }
     for (index_t lv = 0; lv < 2; ++lv) {
-        out.insert(m_mesh.edges()(id, lv));
+        out.insert(mesh.edges()(id, lv));
     }
     return out;
 }
-std::set<index_t> Candidates::ee_set(index_t id) const
+std::set<index_t>
+Candidates::ee_set(const CollisionMesh& mesh, index_t id) const
 {
     if (!m_sets) {
         return {};
     }
 
-    assert(m_mesh.num_vertices());
     std::set<index_t> out;
     if (auto iter = m_sets->ee.find(id); iter != m_sets->ee.end()) {
         out = iter->second;
     }
     for (index_t lv = 0; lv < 2; ++lv) {
-        for (index_t eid : m_mesh.vertices_to_edges()[m_mesh.edges()(id, lv)]) {
+        for (index_t eid : mesh.vertices_to_edges()[mesh.edges()(id, lv)]) {
             out.insert(eid);
         }
     }
@@ -851,14 +849,14 @@ std::set<index_t> Candidates::ee_set(index_t id) const
     // them from EV candidates symmetrically:
     // (a) edges adjacent to vertices that are close to edge id (via ev_set)
     // (b) edges that id's own endpoints are close to (via ve_set)
-    if (m_mesh.dim() == 2) {
-        for (const index_t vj : ev_set(id)) {
-            for (const index_t ej : m_mesh.vertices_to_edges()[vj]) {
+    if (mesh.dim() == 2) {
+        for (const index_t vj : ev_set(mesh, id)) {
+            for (const index_t ej : mesh.vertices_to_edges()[vj]) {
                 out.insert(ej);
             }
         }
         for (index_t lv = 0; lv < 2; ++lv) {
-            const index_t vi = m_mesh.edges()(id, lv);
+            const index_t vi = mesh.edges()(id, lv);
             for (const index_t ej : ve_set(vi)) {
                 out.insert(ej);
             }
@@ -867,77 +865,77 @@ std::set<index_t> Candidates::ee_set(index_t id) const
     out.erase(id);
     return out;
 }
-std::set<index_t> Candidates::ef_set(index_t id) const
+std::set<index_t>
+Candidates::ef_set(const CollisionMesh& mesh, index_t id) const
 {
     if (!m_sets) {
         return {};
     }
 
-    assert(m_mesh.num_vertices());
     std::set<index_t> out;
     if (auto iter = m_sets->ef.find(id); iter != m_sets->ef.end()) {
         out = iter->second;
     }
     for (index_t lv = 0; lv < 2; ++lv) {
-        const auto& faces = m_mesh.vertices_to_faces()[m_mesh.edges()(id, lv)];
+        const auto& faces = mesh.vertices_to_faces()[mesh.edges()(id, lv)];
         for (int fid : faces) {
             out.insert(fid);
         }
     }
-    for (const index_t fid : m_mesh.edges_to_faces()[id]) {
+    for (const index_t fid : mesh.edges_to_faces()[id]) {
         out.erase(fid);
     }
     return out;
 }
 
-std::set<index_t> Candidates::fv_set(index_t id) const
+std::set<index_t>
+Candidates::fv_set(const CollisionMesh& mesh, index_t id) const
 {
     if (!m_sets) {
         return {};
     }
 
-    assert(m_mesh.num_vertices());
     std::set<index_t> out;
     if (auto iter = m_sets->fv.find(id); iter != m_sets->fv.end()) {
         out = iter->second;
     }
     for (index_t lv = 0; lv < 3; ++lv) {
-        out.insert(m_mesh.faces()(id, lv));
+        out.insert(mesh.faces()(id, lv));
     }
     return out;
 }
-std::set<index_t> Candidates::fe_set(index_t id) const
+std::set<index_t>
+Candidates::fe_set(const CollisionMesh& mesh, index_t id) const
 {
     if (!m_sets) {
         return {};
     }
 
-    assert(m_mesh.num_vertices());
     std::set<index_t> out;
     if (auto iter = m_sets->fe.find(id); iter != m_sets->fe.end()) {
         out = iter->second;
     }
     for (index_t lv = 0; lv < 3; ++lv) {
-        for (index_t eid : m_mesh.vertices_to_edges()[m_mesh.faces()(id, lv)]) {
+        for (index_t eid : mesh.vertices_to_edges()[mesh.faces()(id, lv)]) {
             out.insert(eid);
         }
     }
     return out;
 }
-std::set<index_t> Candidates::ff_set(index_t id) const
+std::set<index_t>
+Candidates::ff_set(const CollisionMesh& mesh, index_t id) const
 {
     if (!m_sets) {
         return {};
     }
 
-    assert(m_mesh.num_vertices());
     std::set<index_t> out;
     if (auto iter = m_sets->ff.find(id); iter != m_sets->ff.end()) {
         out = iter->second;
     }
     for (index_t lv = 0; lv < 3; ++lv) {
-        const index_t vid = m_mesh.faces()(id, lv);
-        for (index_t fid : m_mesh.vertices_to_faces()[vid]) {
+        const index_t vid = mesh.faces()(id, lv);
+        for (index_t fid : mesh.vertices_to_faces()[vid]) {
             out.insert(fid);
         }
     }

@@ -4,6 +4,28 @@
 #include <ipc/tangent/closest_point.hpp>
 
 namespace ipc {
+template <typename scalar, int dim>
+scalar PointEdgeDistance<scalar, dim>::point_edge_sqr_distance(
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1,
+    const PointEdgeDistanceType dtype)
+{
+    switch (dtype) {
+    case PointEdgeDistanceType::P_E:
+        return point_line_distance(p, e0, e1);
+    case PointEdgeDistanceType::P_E0:
+        return point_point_distance(p, e0);
+    case PointEdgeDistanceType::P_E1:
+        return point_point_distance(p, e1);
+    case PointEdgeDistanceType::AUTO:
+    default:
+        const Eigen::Vector<scalar, dim> t = e1 - e0;
+        const Eigen::Vector<scalar, dim> pos = p - e0;
+        const scalar s = pos.dot(t) / t.squaredNorm();
+        return (pos - Math<scalar>::l_ns(s) * t).squaredNorm();
+    }
+}
 
 template <typename scalar, int dim>
 Eigen::Vector<scalar, dim>
@@ -273,15 +295,12 @@ template class PointEdgeDistance<ADHessian<12>, 3>;
 template class PointEdgeDistance<ADGrad<13>, 3>;
 template class PointEdgeDistance<ADHessian<13>, 3>;
 
-template class PointEdgeDistance<ADGrad<18>, 3>;
-template class PointEdgeDistance<ADHessian<18>, 3>;
-
-template class PointEdgeDistance<ADGrad<21>, 3>;
-template class PointEdgeDistance<ADHessian<21>, 3>;
-
 #ifdef IPC_TOOLKIT_DEBUG_AUTODIFF
 template class PointEdgeDistance<ADGrad<15>, 3>;
 template class PointEdgeDistance<ADHessian<15>, 3>;
+
+template class PointEdgeDistance<ADGrad<18>, 3>;
+template class PointEdgeDistance<ADHessian<18>, 3>;
 #endif
 
 template class PointEdgeDistance<ADGrad<Eigen::Dynamic>, 3>;

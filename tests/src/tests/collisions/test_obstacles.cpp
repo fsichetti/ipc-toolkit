@@ -1,0 +1,219 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+
+#include <ipc/collision_mesh.hpp>
+#include <ipc/collisions/normal/normal_collisions.hpp>
+#include <ipc/esp/esp_collisions.hpp>
+#include <ipc/esp/esp_potential.hpp>
+
+#include <igl/edges.h>
+#include <igl/PI.h>
+
+#include <algorithm>
+
+using namespace ipc;
+
+namespace {
+
+// Two tetrahedra whose equilateral bases form a star: a dynamic one with its
+// base at z = gap (vertices 0-3) over an obstacle one with its base at z = 0,
+// rotated by 60° (vertices 4-7). Each base's tips lie near the other base's
+// edges, and the base edges cross. Same-body primitives are >= 1 apart.
+CollisionMesh star_mesh(const std::vector<bool>& obstacle_vertex)
+{
+    constexpr double gap = 0.05;
+    Eigen::MatrixXd V(8, 3);
+    for (int i = 0; i < 3; i++) {
+        const double a = 2 * igl::PI * i / 3;
+        V.row(i) << std::cos(a), std::sin(a), gap;
+        V.row(4 + i) << std::cos(a + igl::PI / 3), std::sin(a + igl::PI / 3), 0;
+    }
+    V.row(3) << 0, 0, gap + 1;
+    V.row(7) << 0, 0, -1;
+    Eigen::MatrixXi F(8, 3);
+    F << 0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3, //
+        4, 5, 6, 5, 4, 7, 6, 5, 7, 4, 6, 7;
+    Eigen::MatrixXi E;
+    igl::edges(F, E);
+
+    return CollisionMesh(
+        std::vector<bool>(V.rows(), true), std::vector<bool>(V.rows(), false),
+        obstacle_vertex, V, E, F);
+}
+
+const std::vector<bool> LOWER_OBSTACLE = { false, false, false, false,
+                                           true,  true,  true,  true };
+
+constexpr double DHAT = 0.6;
+
+} // namespace
+
+TEST_CASE("Collision mesh obstacle flags", "[collision_mesh][obstacle]")
+{
+    SECTION("Default constructor has no obstacles")
+    {
+        const CollisionMesh mesh = star_mesh(std::vector<bool>(8, false));
+        const CollisionMesh plain(
+            mesh.rest_positions(), mesh.edges(), mesh.faces());
+        for (int i = 0; i < plain.num_vertices(); i++) {
+            CHECK(!plain.is_obstacle_vertex(i));
+        }
+    }
+
+    SECTION("Flags follow the vertices")
+    {
+        const CollisionMesh mesh = star_mesh(LOWER_OBSTACLE);
+        for (int i = 0; i < mesh.num_vertices(); i++) {
+            CHECK(mesh.is_obstacle_vertex(i) == (i >= 4));
+        }
+        for (int e = 0; e < mesh.num_edges(); e++) {
+            CHECK(mesh.is_obstacle_edge(e) == (mesh.edges()(e, 0) >= 4));
+        }
+        for (int f = 0; f < mesh.num_faces(); f++) {
+            CHECK(mesh.is_obstacle_face(f) == (f >= 4));
+        }
+    }
+
+    SECTION("Flags are mapped to the included vertices")
+    {
+        // Full mesh with an extra, excluded obstacle vertex at index 0.
+        const CollisionMesh star = star_mesh(LOWER_OBSTACLE);
+        Eigen::MatrixXd V(9, 3);
+        V.row(0).setZero();
+        V.bottomRows(8) = star.rest_positions();
+        const Eigen::MatrixXi E = (star.edges().array() + 1).matrix();
+        const Eigen::MatrixXi F = (star.faces().array() + 1).matrix();
+
+        std::vector<bool> include(9, true), obstacle(9, true);
+        include[0] = false;
+        for (int i = 1; i <= 4; i++) {
+            obstacle[i] = false;
+        }
+
+        const CollisionMesh mesh(
+            include, std::vector<bool>(9, false), obstacle, V, E, F);
+        REQUIRE(mesh.num_vertices() == 8);
+        for (int i = 0; i < mesh.num_vertices(); i++) {
+            CHECK(mesh.is_obstacle_vertex(i) == (i >= 4));
+        }
+    }
+
+    SECTION("Mixed edges and faces throw")
+    {
+        std::vector<bool> obstacle = LOWER_OBSTACLE;
+        obstacle[0] = true;
+        const CollisionMesh mesh = star_mesh(obstacle);
+        for (int e = 0; e < mesh.num_edges(); e++) {
+            const bool v0 = mesh.edges()(e, 0) == 0;
+            const bool v1 = mesh.edges()(e, 1) == 0;
+            if (v0 || v1) {
+                CHECK_THROWS(mesh.is_obstacle_edge(e));
+            }
+        }
+        for (int f = 0; f < 4; f++) {
+            if ((mesh.faces().row(f).array() == 0).any()) {
+                CHECK_THROWS(mesh.is_obstacle_face(f));
+            }
+        }
+    }
+}
+
+TEST_CASE("Normal collisions skip obstacles", "[collisions][obstacle]")
+{
+    const CollisionMesh mesh = star_mesh(LOWER_OBSTACLE);
+    const Eigen::MatrixXd& V = mesh.rest_positions();
+
+    NormalCollisions all;
+    all.build(mesh, V, DHAT);
+
+    NormalCollisions skipped;
+    skipped.set_skip_obstacles(true);
+    CHECK(skipped.skip_obstacles());
+    skipped.build(mesh, V, DHAT);
+
+    // Pairs whose vertex is an obstacle are dropped.
+    const auto count_obstacle_vertices = [&](const NormalCollisions& c) {
+        int n = 0;
+        for (const auto& ev : c.ev_collisions) {
+            n += mesh.is_obstacle_vertex(ev.vertex_id);
+        }
+        for (const auto& fv : c.fv_collisions) {
+            n += mesh.is_obstacle_vertex(fv.vertex_id);
+        }
+        return n;
+    };
+    REQUIRE(count_obstacle_vertices(all) > 0);
+    CHECK(count_obstacle_vertices(skipped) == 0);
+    CHECK(skipped.size() < all.size());
+
+    // Edge-edge pairs with one obstacle edge are kept at half weight.
+    REQUIRE(!all.ee_collisions.empty());
+    REQUIRE(skipped.ee_collisions.size() == all.ee_collisions.size());
+    for (const auto& ee : skipped.ee_collisions) {
+        REQUIRE(
+            mesh.is_obstacle_edge(ee.edge0_id)
+            != mesh.is_obstacle_edge(ee.edge1_id));
+        const auto it = std::find_if(
+            all.ee_collisions.begin(), all.ee_collisions.end(),
+            [&](const auto& other) { return other == ee; });
+        REQUIRE(it != all.ee_collisions.end());
+        CHECK(ee.weight == Catch::Approx(0.5 * it->weight));
+    }
+
+    // With every vertex an obstacle, nothing is left.
+    const CollisionMesh all_obstacle = star_mesh(std::vector<bool>(8, true));
+    NormalCollisions none;
+    none.set_skip_obstacles(true);
+    none.build(all_obstacle, V, DHAT);
+    CHECK(none.empty());
+}
+
+TEST_CASE("ESP integration types", "[esp_potential][obstacle]")
+{
+    using IntegrationType = ESPParameters::IntegrationType;
+
+    const auto potential_value = [](const std::vector<bool>& obstacle_vertex,
+                                    const IntegrationType type) {
+        const CollisionMesh mesh = star_mesh(obstacle_vertex);
+        const ESPParameters params(DHAT, 1.0, 1, true, type);
+        ESPCollisions collisions;
+        collisions.build(mesh, mesh.rest_positions(), params);
+        return ESPPotential(params)(collisions, mesh, mesh.rest_positions());
+    };
+
+    const std::vector<bool> none(8, false), all(8, true);
+
+    // Without obstacles, every integration type is the same.
+    const double expected = potential_value(none, IntegrationType::BRUTE_FORCE);
+    REQUIRE(expected > 0);
+    CHECK(
+        potential_value(none, IntegrationType::NORMAL)
+        == Catch::Approx(expected).epsilon(1e-12));
+    CHECK(
+        potential_value(none, IntegrationType::NO_OBST)
+        == Catch::Approx(expected).epsilon(1e-12));
+
+    // BRUTE_FORCE ignores the obstacle flags.
+    for (const auto& flags : { LOWER_OBSTACLE, all }) {
+        CHECK(
+            potential_value(flags, IntegrationType::BRUTE_FORCE)
+            == Catch::Approx(expected).epsilon(1e-12));
+    }
+
+    // The two bodies are mirror images, so each surface integrates half of the
+    // contact; NO_OBST integrates the dynamic one only.
+    CHECK(
+        potential_value(LOWER_OBSTACLE, IntegrationType::NO_OBST)
+        == Catch::Approx(expected / 2).epsilon(1e-12));
+
+    // NORMAL keeps the obstacle's sources but drops their obstacle-obstacle
+    // pairs: the base edges cross within dhat of the obstacle's own vertices.
+    const double normal =
+        potential_value(LOWER_OBSTACLE, IntegrationType::NORMAL);
+    CHECK(normal > expected / 2);
+    CHECK(normal != Catch::Approx(expected).epsilon(1e-12));
+
+    // Obstacle-only contact is integrated only by BRUTE_FORCE.
+    CHECK(potential_value(all, IntegrationType::NORMAL) == 0);
+    CHECK(potential_value(all, IntegrationType::NO_OBST) == 0);
+}

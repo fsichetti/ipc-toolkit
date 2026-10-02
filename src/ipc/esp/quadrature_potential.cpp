@@ -8,7 +8,6 @@
 #include "ipc/distance/point_triangle.hpp"
 #include "ipc/esp/esp_collision_maps.hpp"
 #include "ipc/esp/esp_collisions_builder.hpp"
-#include "ipc/utils/profile_registry.hpp"
 
 #include <algorithm>
 #include <array>
@@ -41,7 +40,7 @@ PointPotential::build_collisions_at_vertex(
     ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
-    const auto& v_set = candidates.vv_set(vid);
+    const auto& v_set = candidates.vv_set(mesh, vid);
     const auto& e_set = candidates.ve_set(vid);
     const auto& f_set = candidates.vf_set(vid);
 
@@ -102,13 +101,12 @@ double
 PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
     const Eigen::MatrixXd& V,
     const ESPCollisionDict<PointType::VERTEX>& collisions,
-    const ESPParameters& params,
-    const AdaptiveSupport* adaptive)
+    const ESPParameters& params)
 {
     double potential = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        potential += cc.weight * cc(cc.dof(V), params, adaptive);
+        potential += cc.weight * cc(cc.dof(V), params);
     }
 
     return potential;
@@ -118,15 +116,13 @@ Eigen::VectorXd PointPotentialHelper::
     evaluate_potential_gradient_at_vertex_with_cached_collisions(
         const Eigen::MatrixXd& V,
         const ESPCollisionDict<PointType::VERTEX>& collisions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive)
+        const ESPParameters& params)
 {
     Eigen::VectorXd grad =
         Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::VectorXd g =
-            cc.weight * cc.gradient(cc.dof(V), params, adaptive);
+        Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V), params);
         assert(g.size() == cc.num_vertices() * 3);
         for (index_t j = 0; j < cc.num_vertices(); j++) {
             grad.segment<3>(
@@ -143,14 +139,13 @@ Eigen::MatrixXd PointPotentialHelper::
         const Eigen::MatrixXd& V,
         const ESPCollisionDict<PointType::VERTEX>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd)
 {
     Eigen::MatrixXd H = Eigen::MatrixXd::Zero(
         collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::MatrixXd h = cc.hessian(cc.dof(V), params, adaptive);
+        Eigen::MatrixXd h = cc.hessian(cc.dof(V), params);
         // The following code can be used only if all weights are positive
         // if (project_to_psd != PSDProjectionMethod::NONE) {
         //     h = ipc::project_to_psd(h, project_to_psd);
@@ -170,8 +165,6 @@ Eigen::MatrixXd PointPotentialHelper::
     }
 
     if (project_to_psd != PSDProjectionMethod::NONE) {
-        ProfileRegistry::instance().add_value(
-            "ho.psd_projection.size", H.rows());
         H = ipc::project_to_psd(H, project_to_psd);
     }
     return H;
@@ -185,9 +178,9 @@ PointPotential::build_collisions_at_edge_edge_closest_point(
     EdgeEdgeDistanceType dtype,
     size_t& num_collision_pairs) const
 {
-    const auto& v_set = candidates.ev_set(e0);
-    const auto& e_set = candidates.ee_set(e0);
-    const auto& f_set = candidates.ef_set(e0);
+    const auto& v_set = candidates.ev_set(mesh, e0);
+    const auto& e_set = candidates.ee_set(mesh, e0);
+    const auto& f_set = candidates.ef_set(mesh, e0);
 
     // Compute closest point
     const index_t e00 = mesh.edges()(e0, 0);
@@ -206,7 +199,7 @@ PointPotential::build_collisions_at_edge_edge_closest_point(
     ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
-    if (edge_edge_distance(
+    if (edge_edge_distance_parallel_safe(
             V.row(e00), V.row(e01), V.row(e10), V.row(e11), dtype)
         < params.dhat * params.dhat) {
         double closest_uv = 0;
@@ -417,13 +410,12 @@ double PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         EdgeEdgeDistanceType dtype)
 {
     double potential = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        double term = cc(cc.dof(V_extended), params, adaptive);
+        double term = cc(cc.dof(V_extended), params);
         assert(std::isfinite(term));
         potential += cc.weight * term;
     }
@@ -440,7 +432,6 @@ PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADType>> q)
 {
     const index_t n_real_vertices = V_extended.rows() - 1;
@@ -448,8 +439,7 @@ PointPotentialHelper::
         Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::VectorXd g =
-            cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
+        Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
             if (global_id == n_real_vertices) {
@@ -479,7 +469,6 @@ template Eigen::VectorXd PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> q);
 
 template Eigen::VectorXd PointPotentialHelper::
@@ -488,7 +477,6 @@ template Eigen::VectorXd PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q);
 
 Eigen::MatrixXd PointPotentialHelper::
@@ -496,7 +484,6 @@ Eigen::MatrixXd PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q)
 {
     const index_t n_real_vertices = V_extended.rows() - 1;
@@ -505,8 +492,8 @@ Eigen::MatrixXd PointPotentialHelper::
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
         const Eigen::VectorXd cc_dof = cc.dof(V_extended);
-        Eigen::MatrixXd h = cc.weight * cc.hessian(cc_dof, params, adaptive);
-        Eigen::VectorXd g = cc.weight * cc.gradient(cc_dof, params, adaptive);
+        Eigen::MatrixXd h = cc.weight * cc.hessian(cc_dof, params);
+        Eigen::VectorXd g = cc.weight * cc.gradient(cc_dof, params);
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t gi = cc.vertex_id(i);
@@ -591,9 +578,9 @@ PointPotential::build_collisions_at_face_center(
     ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
-    const auto& v_set = candidates.fv_set(fid);
-    const auto& e_set = candidates.fe_set(fid);
-    const auto& f_set = candidates.ff_set(fid);
+    const auto& v_set = candidates.fv_set(mesh, fid);
+    const auto& e_set = candidates.fe_set(mesh, fid);
+    const auto& f_set = candidates.ff_set(mesh, fid);
 
     for (const auto& other_f : f_set) {
         assert(other_f != fid);
@@ -652,9 +639,9 @@ PointPotential::build_collisions_at_face_interior_point(
     ESPCollisionPairMap pairs;
     num_collision_pairs = 0;
 
-    const auto& v_set = candidates.fv_set(fid);
-    const auto& e_set = candidates.fe_set(fid);
-    const auto& f_set = candidates.ff_set(fid);
+    const auto& v_set = candidates.fv_set(mesh, fid);
+    const auto& e_set = candidates.fe_set(mesh, fid);
+    const auto& f_set = candidates.ff_set(mesh, fid);
 
     // Detect boundary quadrature points (for rules that include boundary
     // points). lambda[k] == 0.0 means the point lies on the edge opposite
@@ -776,16 +763,14 @@ Eigen::VectorXd PointPotentialHelper::
     evaluate_potential_gradient_at_face_center_with_cached_collisions(
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive)
+        const ESPParameters& params)
 {
     const index_t n_real_vertices = V_extended.rows() - 1;
     Eigen::VectorXd grad =
         Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::VectorXd g =
-            cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
+        Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
             if (global_id == n_real_vertices) {
@@ -810,7 +795,6 @@ Eigen::MatrixXd PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd)
 {
     const index_t n_real_vertices = V_extended.rows() - 1;
@@ -818,7 +802,7 @@ Eigen::MatrixXd PointPotentialHelper::
         collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params, adaptive);
+        Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
         // if (project_to_psd != PSDProjectionMethod::NONE) {
         //     h = ipc::project_to_psd(h, project_to_psd);
         // }
@@ -865,8 +849,6 @@ Eigen::MatrixXd PointPotentialHelper::
     }
 
     if (project_to_psd != PSDProjectionMethod::NONE) {
-        ProfileRegistry::instance().add_value(
-            "ho.psd_projection.size", H.rows());
         H = ipc::project_to_psd(H, project_to_psd);
     }
     return H;
@@ -876,13 +858,12 @@ double
 PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
     VertexMatrixView<3> V_extended,
     const ESPCollisionDict<PointType::FACE>& collisions,
-    const ESPParameters& params,
-    const AdaptiveSupport* adaptive)
+    const ESPParameters& params)
 {
     double potential = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        potential += cc.weight * cc(cc.dof(V_extended), params, adaptive);
+        potential += cc.weight * cc(cc.dof(V_extended), params);
     }
 
     return potential;
@@ -900,7 +881,6 @@ Eigen::VectorXd PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda)
 {
     const index_t n_real_vertices = V_extended.rows() - 1;
@@ -908,8 +888,7 @@ Eigen::VectorXd PointPotentialHelper::
         Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::VectorXd g =
-            cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
+        Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
             if (global_id == n_real_vertices) {
@@ -933,7 +912,6 @@ Eigen::MatrixXd PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda,
         PSDProjectionMethod project_to_psd)
 {
@@ -943,7 +921,7 @@ Eigen::MatrixXd PointPotentialHelper::
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params, adaptive);
+        Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
         h *= cc.weight;
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
@@ -991,8 +969,6 @@ Eigen::MatrixXd PointPotentialHelper::
     }
 
     if (project_to_psd != PSDProjectionMethod::NONE) {
-        ProfileRegistry::instance().add_value(
-            "ho.psd_projection.size", H.rows());
         H = ipc::project_to_psd(H, project_to_psd);
     }
     return H;
@@ -1037,7 +1013,7 @@ PointPotential::build_collisions_at_edge_qp(
     const double dhat2 = dhat * dhat;
 
     // VV pairs (weight=-1): for each nearby vertex within dhat of the QP.
-    for (const index_t vj : candidates.ev_set(ei)) {
+    for (const index_t vj : candidates.ev_set(mesh, ei)) {
         if (vj == corner_vertex) {
             continue;
         }
@@ -1059,7 +1035,7 @@ PointPotential::build_collisions_at_edge_qp(
     // EV pairs (weight=+1): iterate ee_set directly.
     std::unordered_set<index_t> processed_edges;
     processed_edges.insert(ei);
-    for (const index_t ej : candidates.ee_set(ei)) {
+    for (const index_t ej : candidates.ee_set(mesh, ei)) {
         // if (processed_edges.count(ej)) continue;
         processed_edges.insert(ej);
         const index_t ea = mesh.edges()(ej, 0);
@@ -1119,13 +1095,12 @@ PointPotential::build_collisions_at_edge_qp(
 double PointPotentialHelper::evaluate_potential_at_edge_qp(
     VertexMatrixView<2> V_extended,
     const ESPCollisionDict<PointType::EDGE, 2>& collisions,
-    const ESPParameters& params,
-    const AdaptiveSupport* adaptive)
+    const ESPParameters& params)
 {
     double potential = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        potential += cc.weight * cc(cc.dof(V_extended), params, adaptive);
+        potential += cc.weight * cc(cc.dof(V_extended), params);
     }
     return potential;
 }
@@ -1134,7 +1109,6 @@ Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_edge_qp(
     VertexMatrixView<2> V_extended,
     const ESPCollisionDict<PointType::EDGE, 2>& collisions,
     const ESPParameters& params,
-    const AdaptiveSupport* adaptive,
     const std::array<double, 2>& lambda)
 {
     const index_t n_real_vertices = V_extended.rows() - 1;
@@ -1142,8 +1116,7 @@ Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_edge_qp(
         Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 2);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::VectorXd g =
-            cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
+        Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
             if (global_id == n_real_vertices) {
@@ -1166,7 +1139,6 @@ Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_edge_qp(
     VertexMatrixView<2> V_extended,
     const ESPCollisionDict<PointType::EDGE, 2>& collisions,
     const ESPParameters& params,
-    const AdaptiveSupport* adaptive,
     const std::array<double, 2>& lambda,
     PSDProjectionMethod project_to_psd)
 {
@@ -1176,7 +1148,7 @@ Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_edge_qp(
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params, adaptive);
+        Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
         h *= cc.weight;
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
@@ -1220,8 +1192,6 @@ Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_edge_qp(
     }
 
     if (project_to_psd != PSDProjectionMethod::NONE) {
-        ProfileRegistry::instance().add_value(
-            "ho.psd_projection.size", H.rows());
         H = ipc::project_to_psd(H, project_to_psd);
     }
     return H;
@@ -1236,14 +1206,12 @@ std::pair<double, double> PointPotentialHelper::
         const Eigen::MatrixXd& V,
         const ESPCollisionDict<PointType::VERTEX>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
 {
     double near_sum = 0, far_sum = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [n, f] =
-            cc.operator_nearfar(cc.dof(V), params, adaptive, &nf_barrier);
+        auto [n, f] = cc.operator_nearfar(cc.dof(V), params, &nf_barrier);
         near_sum += cc.weight * n;
         far_sum += cc.weight * f;
     }
@@ -1255,7 +1223,6 @@ std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::
         const Eigen::MatrixXd& V,
         const ESPCollisionDict<PointType::VERTEX>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
 {
     const int n_vertices = collisions.vertex_ids().size();
@@ -1265,8 +1232,7 @@ std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [gn, gf] =
-            cc.gradient_nearfar(cc.dof(V), params, adaptive, &nf_barrier);
+        auto [gn, gf] = cc.gradient_nearfar(cc.dof(V), params, &nf_barrier);
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
@@ -1287,7 +1253,6 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::
         const Eigen::MatrixXd& V,
         const ESPCollisionDict<PointType::VERTEX>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd,
         const NearFarBarrier& nf_barrier)
 {
@@ -1299,8 +1264,7 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [hn, hf] =
-            cc.hessian_nearfar(cc.dof(V), params, adaptive, &nf_barrier);
+        auto [hn, hf] = cc.hessian_nearfar(cc.dof(V), params, &nf_barrier);
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id_i = cc.vertex_id(i);
@@ -1334,7 +1298,6 @@ double PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         EdgeEdgeDistanceType dtype,
         const NearFarBarrier& nf_barrier)
 {
@@ -1342,8 +1305,7 @@ double PointPotentialHelper::
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
         near_sum += cc.weight
-            * cc.operator_nearfar(
-                    cc.dof(V_extended), params, adaptive, &nf_barrier)
+            * cc.operator_nearfar(cc.dof(V_extended), params, &nf_barrier)
                   .first;
     }
     return near_sum;
@@ -1357,7 +1319,6 @@ PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> q,
         const NearFarBarrier& nf_barrier)
 {
@@ -1366,8 +1327,8 @@ PointPotentialHelper::
         Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [gn, gf] = cc.gradient_nearfar(
-            cc.dof(V_extended), params, adaptive, &nf_barrier);
+        auto [gn, gf] =
+            cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
         Eigen::VectorXd g = cc.weight * gn;
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
@@ -1400,7 +1361,6 @@ PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
         const NearFarBarrier& nf_barrier)
 {
@@ -1409,8 +1369,8 @@ PointPotentialHelper::
         Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [gn, gf] = cc.gradient_nearfar(
-            cc.dof(V_extended), params, adaptive, &nf_barrier);
+        auto [gn, gf] =
+            cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
         Eigen::VectorXd g = cc.weight * gn;
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
@@ -1440,7 +1400,6 @@ Eigen::MatrixXd PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::EDGE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
         const NearFarBarrier& nf_barrier)
 {
@@ -1450,10 +1409,8 @@ Eigen::MatrixXd PointPotentialHelper::
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
         const Eigen::VectorXd cc_dof = cc.dof(V_extended);
-        auto [gn, gf] =
-            cc.gradient_nearfar(cc_dof, params, adaptive, &nf_barrier);
-        auto [hn, hf] =
-            cc.hessian_nearfar(cc_dof, params, adaptive, &nf_barrier);
+        auto [gn, gf] = cc.gradient_nearfar(cc_dof, params, &nf_barrier);
+        auto [hn, hf] = cc.hessian_nearfar(cc_dof, params, &nf_barrier);
         Eigen::VectorXd g = cc.weight * gn;
         Eigen::MatrixXd h = cc.weight * hn;
 
@@ -1526,14 +1483,13 @@ std::pair<double, double> PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
 {
     double near_sum = 0, far_sum = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [n, f] = cc.operator_nearfar(
-            cc.dof(V_extended), params, adaptive, &nf_barrier);
+        auto [n, f] =
+            cc.operator_nearfar(cc.dof(V_extended), params, &nf_barrier);
         near_sum += cc.weight * n;
         far_sum += cc.weight * f;
     }
@@ -1545,7 +1501,6 @@ std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
 {
     const int n_vertices = collisions.vertex_ids().size();
@@ -1554,8 +1509,8 @@ std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [gn, gf] = cc.gradient_nearfar(
-            cc.dof(V_extended), params, adaptive, &nf_barrier);
+        auto [gn, gf] =
+            cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
@@ -1583,7 +1538,6 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd,
         const NearFarBarrier& nf_barrier)
 {
@@ -1595,8 +1549,8 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [hn, hf] = cc.hessian_nearfar(
-            cc.dof(V_extended), params, adaptive, &nf_barrier);
+        auto [hn, hf] =
+            cc.hessian_nearfar(cc.dof(V_extended), params, &nf_barrier);
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id_i = cc.vertex_id(i);
@@ -1652,7 +1606,6 @@ std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda,
         const NearFarBarrier& nf_barrier)
 {
@@ -1662,8 +1615,8 @@ std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [gn, gf] = cc.gradient_nearfar(
-            cc.dof(V_extended), params, adaptive, &nf_barrier);
+        auto [gn, gf] =
+            cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id = cc.vertex_id(i);
@@ -1694,7 +1647,6 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda,
         PSDProjectionMethod project_to_psd,
         const NearFarBarrier& nf_barrier)
@@ -1707,8 +1659,8 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::
 
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        auto [hn, hf] = cc.hessian_nearfar(
-            cc.dof(V_extended), params, adaptive, &nf_barrier);
+        auto [hn, hf] =
+            cc.hessian_nearfar(cc.dof(V_extended), params, &nf_barrier);
 
         for (index_t i = 0; i < cc.num_vertices(); i++) {
             const index_t global_id_i = cc.vertex_id(i);

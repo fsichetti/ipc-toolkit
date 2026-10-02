@@ -152,9 +152,9 @@ void NormalCollisionsBuilder::add_edge_edge_collision(
 {
     const auto& [eai, ebi] = candidate;
 
-    const bool is_obstacle_ea = mesh.is_obstacle_edge(eai);
-    const bool is_obstacle_eb = mesh.is_obstacle_edge(ebi);
-    if (skip_obstacles && is_obstacle_ea && is_obstacle_eb) {
+    const bool is_obstacle_ea = skip_obstacles && mesh.is_obstacle_edge(eai);
+    const bool is_obstacle_eb = skip_obstacles && mesh.is_obstacle_edge(ebi);
+    if (is_obstacle_ea && is_obstacle_eb) {
         return;
     }
 
@@ -203,7 +203,7 @@ void NormalCollisionsBuilder::add_edge_edge_collision(
             : Eigen::SparseVector<double>(vertices.size());
     }
 
-    if (skip_obstacles && (is_obstacle_ea || is_obstacle_eb)) {
+    if (is_obstacle_ea || is_obstacle_eb) {
         weight /= 2;
         if (enable_shape_derivatives) {
             weight_gradient /= 2;

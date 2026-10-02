@@ -6,7 +6,6 @@ set(SOURCES
   test_gcp_potential.cpp
   test_esp_potential.cpp
   test_friction_potential.cpp
-  test_smooth_clamp.cpp
   test_distance_vector_methods.cpp
   test_full_dof_assembly.cpp
   test_gradient_assembly.cpp

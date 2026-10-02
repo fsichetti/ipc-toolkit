@@ -2,7 +2,6 @@
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/esp/esp_parameters.hpp>
-#include <ipc/math/span.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
 #include <array>
@@ -37,11 +36,11 @@ public:
     /// @brief Get the number of degrees of freedom for this primitive.
     virtual int n_dofs() const = 0;
 
-    /// @brief Get the vertex IDs of the primitive's stencil.
-    span<const index_t> vertex_ids() const
+    /// @brief Get the i-th vertex ID of the primitive's stencil.
+    index_t vertex_id(const index_t i) const
     {
-        assert(MAX_NUM_VERTS >= n_vertices());
-        return span<const index_t>(m_vertex_ids.data(), n_vertices());
+        assert(i >= 0 && i < n_vertices());
+        return m_vertex_ids[i];
     }
 
 protected:

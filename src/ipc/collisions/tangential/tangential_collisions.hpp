@@ -8,8 +8,6 @@
 #include <ipc/collisions/tangential/plane_vertex.hpp>
 #include <ipc/collisions/tangential/tangential_collision.hpp>
 #include <ipc/collisions/tangential/vertex_vertex.hpp>
-#include <ipc/esp/esp_collisions.hpp>
-#include <ipc/esp/esp_parameters.hpp>
 #include <ipc/gcp/gcp_collisions.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
@@ -17,6 +15,9 @@
 #include <Eigen/Sparse>
 
 namespace ipc {
+
+class ESPCollisions;
+struct ESPParameters;
 
 class TangentialCollisions {
 public:

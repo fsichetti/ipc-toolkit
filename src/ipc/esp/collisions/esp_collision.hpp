@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../adaptive_support.hpp"
 #include "esp_primitives.hpp"
 #include "vertex_matrix_view.hpp"
 
@@ -94,20 +93,17 @@ public:
     /// @brief Compute the value of the GCP potential
     virtual double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive = nullptr) const = 0;
+        const ESPParameters& params) const = 0;
 
     /// @brief Compute the gradient of the GCP potential wrt. vertices involved
     virtual VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive = nullptr) const = 0;
+        const ESPParameters& params) const = 0;
 
     /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const ESPParameters& params,
-        const AdaptiveSupport* adaptive = nullptr) const = 0;
+        const ESPParameters& params) const = 0;
 
     bool operator==(const ESPCollision& other) const
     {
@@ -126,7 +122,6 @@ public:
     virtual std::pair<double, double> operator_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const
     {
         return { 0.0, 0.0 };
@@ -137,7 +132,6 @@ public:
         gradient_nearfar(
             Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
             const ESPParameters& params,
-            const AdaptiveSupport* adaptive,
             const NearFarBarrier* nf_barrier) const
     {
         VectorMax<double, ELEMENT_SIZE> zero =
@@ -151,7 +145,6 @@ public:
     hessian_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params,
-        const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const
     {
         int n = positions.size();

@@ -400,9 +400,7 @@ double ArbitraryPointESP<dim>::operator()(
 
     double value = 0.0;
     collisions.for_each([&](const auto& cc) {
-        value += cc.weight
-            * cc(stencil_positions<dim>(cc, V_view), params,
-                 /*adaptive=*/nullptr);
+        value += cc.weight * cc(stencil_positions<dim>(cc, V_view), params);
     });
     return value;
 }
@@ -419,10 +417,8 @@ auto ArbitraryPointESP<dim>::gradient(
 
     Gradient grad = Gradient::Zero();
     collisions.for_each([&](const auto& cc) {
-        const VectorMax<double, ESPCollision::ELEMENT_SIZE> g = cc.weight
-            * cc.gradient(
-                stencil_positions<dim>(cc, V_view), params,
-                /*adaptive=*/nullptr);
+        const VectorMax<double, ESPCollision::ELEMENT_SIZE> g =
+            cc.weight * cc.gradient(stencil_positions<dim>(cc, V_view), params);
         grad += g.template segment<dim>(dim * query_slot(cc, vid));
     });
     return grad;
@@ -443,11 +439,9 @@ auto ArbitraryPointESP<dim>::hessian(
         const int j = dim * query_slot(cc, vid);
         // One Hessian temporary (ELEMENT_SIZE^2 doubles on the stack), read
         // through a block of the scaled expression rather than copied.
-        H += (cc.hessian(
-                  stencil_positions<dim>(cc, V_view), params,
-                  /*adaptive=*/nullptr)
-              * cc.weight)
-                 .template block<dim, dim>(j, j);
+        H +=
+            (cc.hessian(stencil_positions<dim>(cc, V_view), params) * cc.weight)
+                .template block<dim, dim>(j, j);
     });
     return H;
 }
@@ -471,13 +465,13 @@ auto ArbitraryPointESP<dim>::evaluate(
             stencil_positions<dim>(cc, V_view);
         const int j = dim * query_slot(cc, vid);
 
-        value += cc.weight * cc(dof, params, /*adaptive=*/nullptr);
+        value += cc.weight * cc(dof, params);
 
         const VectorMax<double, ESPCollision::ELEMENT_SIZE> g =
-            cc.weight * cc.gradient(dof, params, /*adaptive=*/nullptr);
+            cc.weight * cc.gradient(dof, params);
         grad += g.template segment<dim>(j);
 
-        H += (cc.weight * cc.hessian(dof, params, /*adaptive=*/nullptr))
+        H += (cc.weight * cc.hessian(dof, params))
                  .template block<dim, dim>(j, j);
     });
 

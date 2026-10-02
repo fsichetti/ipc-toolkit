@@ -27,8 +27,8 @@ public:
 
     /// @brief Build per-edge, per-QP collision dicts for the 2D quadrature path.
     /// For each edge ei in [start, end), places Gauss-Lobatto QPs on ei and
-    /// finds nearby vertices/edges from candidates.ev_set(ei) and
-    /// candidates.ee_set(ei). Results are stored in edge_collisions_2d.
+    /// finds nearby vertices/edges from candidates.ev_set(mesh, ei) and
+    /// candidates.ee_set(mesh, ei). Results are stored in edge_collisions_2d.
     void build_edge_collisions(
         const CollisionMesh& mesh,
         const Eigen::MatrixXd& vertices,

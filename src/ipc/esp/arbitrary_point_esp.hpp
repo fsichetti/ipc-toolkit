@@ -40,9 +40,6 @@ namespace ipc {
 /// ESPPotential, just evaluated for a virtual point
 /// (id == V.rows()) instead of a real mesh vertex, via VertexMatrixView.
 ///
-/// A single fixed params.dhat is used everywhere; AdaptiveSupport
-/// (per-primitive dhat) is not supported.
-///
 /// @tparam dim Spatial dimension of the mesh, 2 or 3.
 template <int dim> class ArbitraryPointESP {
     static_assert(dim == 2 || dim == 3, "dim must be 2 or 3");

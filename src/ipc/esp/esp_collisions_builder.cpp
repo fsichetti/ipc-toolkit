@@ -4,8 +4,10 @@
 
 #include <ipc/distance/distance_type_exact.hpp>
 #include <ipc/distance/edge_edge.hpp>
+#include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_triangle.hpp>
 #include <ipc/esp/esp_collision_maps.hpp>
+#include <ipc/esp/esp_distance.hpp>
 #include <ipc/esp/quadrature_potential.hpp>
 
 #include <tbb/enumerable_thread_specific.h>
@@ -31,7 +33,8 @@ void ESPCollisionsBuilder<2>::build_edge_collisions(
     for (size_t edge_idx = start; edge_idx < end; ++edge_idx) {
         const index_t ei = static_cast<index_t>(edge_idx);
 
-        if (candidates.ev_set(ei).empty() && candidates.ee_set(ei).empty()) {
+        if (candidates.ev_set(mesh, ei).empty()
+            && candidates.ee_set(mesh, ei).empty()) {
             continue;
         }
 
@@ -41,7 +44,7 @@ void ESPCollisionsBuilder<2>::build_edge_collisions(
         }
         if (params.integration_type != IntegrationType::BRUTE_FORCE
             && mesh.is_obstacle_edge(ei)) {
-            const auto& ev = candidates.ev_set(ei);
+            const auto& ev = candidates.ev_set(mesh, ei);
             const bool has_non_obstacle =
                 std::any_of(ev.begin(), ev.end(), [&](index_t v) {
                     return !mesh.is_obstacle_vertex(v);
@@ -288,7 +291,7 @@ void QuadratureCollisionsBuilder::build_vertex_collisions(
         }
         if (params.integration_type != IntegrationType::BRUTE_FORCE
             && mesh.is_obstacle_vertex(vi)) {
-            const auto v_set = point_potential->candidates.vv_set(vi);
+            const auto v_set = point_potential->candidates.vv_set(mesh, vi);
             const auto e_set = point_potential->candidates.ve_set(vi);
             const auto f_set = point_potential->candidates.vf_set(vi);
             const bool has_non_obstacle =
@@ -336,9 +339,9 @@ void QuadratureCollisionsBuilder::build_face_collisions(
         }
         if (params.integration_type != IntegrationType::BRUTE_FORCE
             && mesh.is_obstacle_face(fi)) {
-            const auto v_set = point_potential->candidates.fv_set(fi);
-            const auto e_set = point_potential->candidates.fe_set(fi);
-            const auto f_set = point_potential->candidates.ff_set(fi);
+            const auto v_set = point_potential->candidates.fv_set(mesh, fi);
+            const auto e_set = point_potential->candidates.fe_set(mesh, fi);
+            const auto f_set = point_potential->candidates.ff_set(mesh, fi);
             const bool has_non_obstacle =
                 std::any_of(
                     v_set.begin(), v_set.end(),
@@ -390,9 +393,9 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
     // non-obstacle candidate. Used in NORMAL mode to skip placing a QP on an
     // obstacle edge with only obstacle candidates.
     auto obstacle_edge_has_non_obstacle_candidates = [&](index_t e) -> bool {
-        const auto v_set = point_potential->candidates.ev_set(e);
-        const auto e_set = point_potential->candidates.ee_set(e);
-        const auto f_set = point_potential->candidates.ef_set(e);
+        const auto v_set = point_potential->candidates.ev_set(mesh, e);
+        const auto e_set = point_potential->candidates.ee_set(mesh, e);
+        const auto f_set = point_potential->candidates.ef_set(mesh, e);
         return std::any_of(
                    v_set.begin(), v_set.end(),
                    [&](index_t v) { return !mesh.is_obstacle_vertex(v); })
@@ -433,7 +436,7 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             vertices.row(ea), vertices.row(eb), vertices.row(ec),
             vertices.row(ed));
 
-        const double dist_sq = edge_edge_distance(
+        const double dist_sq = edge_edge_distance_parallel_safe(
             vertices.row(ea), vertices.row(eb), vertices.row(ec),
             vertices.row(ed), dtype);
 

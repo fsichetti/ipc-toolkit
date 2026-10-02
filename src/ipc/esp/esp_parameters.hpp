@@ -49,9 +49,6 @@ struct ESPParameters {
         } else if (quad_order >= 10 && quad_order <= 12) {
             logger().warn(
                 "Quadrature orders 10-12 are not implemented, and instead use order 13.");
-        } else if (quad_order == 1) {
-            logger().warn(
-                "Quadrature order 1 is equivalent to vertex quadrature.");
         }
     }
 
@@ -62,6 +59,7 @@ struct ESPParameters {
     /// Barrier function used in 3D collision evaluation.
     std::shared_ptr<Barrier> barrier =
         std::make_shared<NormalizedClampedLogBarrier<>>();
+    /// Gauss-Lobatto edge quadrature order (2D).
     const int quad_order;
     bool area_weights;
     const IntegrationType integration_type;
@@ -70,8 +68,8 @@ struct ESPParameters {
 
     const FaceQuadRule& get_quad_rule() const { return face_quad_rule; }
 
-    /// Face quadrature rule. Empty (default) skips face quadrature entirely,
-    /// matching the behaviour of quad_order == 0 in the old interface.
+    /// Face quadrature rule (3D). Empty (default) integrates over the face
+    /// vertices instead; quad_order does not affect 3D.
     FaceQuadRule face_quad_rule;
 
     /// Record a distance passed to the barrier; tracks the running minimum

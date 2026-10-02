@@ -306,7 +306,7 @@ endif()
 # Geogram
 if(IPC_TOOLKIT_WITH_GEOGRAM)
   include(geogram)
-  target_link_libraries(ipc_toolkit PUBLIC geogram::geogram)
+  target_link_libraries(ipc_toolkit PRIVATE geogram::geogram)
 endif()
 
 # Block-accelerated Hessian assembly
@@ -363,11 +363,12 @@ if(IPC_TOOLKIT_WITH_SIMD)
   # Link against cross-platform xsimd library
   include(xsimd)
   target_link_libraries(ipc_toolkit PUBLIC xsimd::xsimd)
-
-  # Disable vectorization in Eigen since I've found it to have alignment issues.
-  # NOTE: I don't know why this needs to be public, but it crashes if I make it private.
-  target_compile_definitions(ipc_toolkit PUBLIC EIGEN_DONT_VECTORIZE=1)
 endif()
+
+# Disable vectorization in Eigen since I've found it to have alignment issues.
+# ESP static_asserts this, so it applies with or without SIMD.
+# NOTE: I don't know why this needs to be public, but it crashes if I make it private.
+target_compile_definitions(ipc_toolkit PUBLIC EIGEN_DONT_VECTORIZE=1)
 
 if(IPC_TOOLKIT_WITH_CUDA)
   # Pin Eigen's alignment so C++ and CUDA translation units agree on object
@@ -415,25 +416,6 @@ endif()
 target_compile_features(ipc_toolkit PUBLIC cxx_std_17)
 
 ################################################################################
-# CUDA
-################################################################################
-
-# CUDA support
-if(IPC_TOOLKIT_WITH_CUDA)
-  # If CMAKE_CUDA_ARCHITECTURES was not specified, set it to native.
-  if(DEFINED CMAKE_CUDA_ARCHITECTURES)
-    message(STATUS "CMAKE_CUDA_ARCHITECTURES was specified, skipping auto-detection")
-  else()
-    message(STATUS "CMAKE_CUDA_ARCHITECTURES was not specified, set it to native")
-    set(CMAKE_CUDA_ARCHITECTURES "native")
-  endif()
-  message(STATUS "Targeting CUDA_ARCHITECTURES \"${CMAKE_CUDA_ARCHITECTURES}\"")
-
-  # Enable CUDA support
-  enable_language(CUDA)
-endif()
-
-################################################################################
 # Tests
 ################################################################################
 
@@ -442,12 +424,6 @@ if(IPC_TOOLKIT_BUILD_TESTS)
   include(CTest)
   enable_testing()
   add_subdirectory(tests)
-  if(IPC_TOOLKIT_WITH_ROBIN_MAP)
-    target_link_libraries(ipc_toolkit_tests PRIVATE tsl::robin_map)
-  endif()
-  if(IPC_TOOLKIT_WITH_ABSEIL)
-    target_link_libraries(ipc_toolkit_tests PRIVATE absl::hash)
-  endif()
 endif()
 
 ################################################################################

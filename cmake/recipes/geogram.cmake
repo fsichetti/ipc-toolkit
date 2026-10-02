@@ -1,4 +1,4 @@
-# finite-diff (https://github.com/BrunoLevy/geogram)
+# geogram (https://github.com/BrunoLevy/geogram)
 # License: BSD 3-Clause License
 if(TARGET geogram::geogram)
     return()
@@ -10,15 +10,15 @@ include(CPM)
 CPMAddPackage(
     URI "gh:BrunoLevy/geogram@1.10.1"
     OPTIONS
-        "GEOGRAM_WITH_GRAPHICS OFF"  
-        "GEOGRAM_WITH_LEGACY_NUMERICS OFF"  
-        "GEOGRAM_WITH_HLBFGS OFF"  
-        "GEOGRAM_WITH_TETGEN OFF"  
-        "GEOGRAM_WITH_TRIANGLE OFF"  
-        "GEOGRAM_WITH_LUA OFF"  
+        "GEOGRAM_WITH_GRAPHICS OFF"
+        "GEOGRAM_WITH_LEGACY_NUMERICS OFF"
+        "GEOGRAM_WITH_HLBFGS OFF"
+        "GEOGRAM_WITH_TETGEN OFF"
+        "GEOGRAM_WITH_TRIANGLE OFF"
+        "GEOGRAM_WITH_LUA OFF"
         "GEOGRAM_LIB_ONLY ON"
 )
 
-if(NOT TARGET geogram::geogram AND TARGET geogram)  
-    add_library(geogram::geogram ALIAS geogram)  
+if(NOT TARGET geogram::geogram AND TARGET geogram)
+    add_library(geogram::geogram ALIAS geogram)
 endif()

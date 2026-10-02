@@ -1,7 +1,5 @@
 #include "esp_collision.hpp"
 
-#include "ipc/gcp/distance/point_edge.hpp"
-
 #include <ipc/config.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_point.hpp>

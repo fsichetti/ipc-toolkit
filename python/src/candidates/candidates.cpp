@@ -21,6 +21,7 @@ void define_candidates(py::module_& m)
                 vertices: Surface vertex positions (rowwise).
                 inflation_radius: Amount to inflate the bounding boxes.
                 broad_phase: Broad phase to use.
+                all_types: Also detect the candidate types only ESP needs.
             )ipc_Qu8mg5v7",
             "mesh"_a, "vertices"_a, "inflation_radius"_a = 0,
             "broad_phase"_a = nullptr, "all_types"_a = false)
@@ -42,6 +43,7 @@ void define_candidates(py::module_& m)
                 vertices_t1: Surface vertex ending positions (rowwise).
                 inflation_radius: Amount to inflate the bounding boxes.
                 broad_phase: Broad phase to use.
+                all_types: Also detect the candidate types only ESP needs.
             )ipc_Qu8mg5v7",
             "mesh"_a, "vertices_t0"_a, "vertices_t1"_a,
             "inflation_radius"_a = 0, "broad_phase"_a = nullptr,

@@ -240,13 +240,21 @@ void define_smooth_potential(py::module_& m)
 
 void define_esp_potential(py::module& m)
 {
-    py::enum_<ESPParameters::IntegrationType>(m, "IntegrationType")
-        .value("BRUTE_FORCE", ESPParameters::IntegrationType::BRUTE_FORCE)
-        .value("NORMAL", ESPParameters::IntegrationType::NORMAL)
-        .value("NO_OBST", ESPParameters::IntegrationType::NO_OBST)
-        .export_values();
+    py::class_<ESPParameters> esp_parameters(m, "ESPParameters");
 
-    py::class_<ESPParameters>(m, "ESPParameters")
+    py::enum_<ESPParameters::IntegrationType>(esp_parameters, "IntegrationType")
+        .value(
+            "BRUTE_FORCE", ESPParameters::IntegrationType::BRUTE_FORCE,
+            "Integrate all pairs with no obstacle filtering")
+        .value(
+            "NORMAL", ESPParameters::IntegrationType::NORMAL,
+            "Filter obstacle-obstacle pairs; skip primitives with only "
+            "obstacle candidates")
+        .value(
+            "NO_OBST", ESPParameters::IntegrationType::NO_OBST,
+            "Skip obstacle sources entirely, may miss collisions!");
+
+    esp_parameters
         .def(
             py::init<
                 const double, const double, const int, bool,
@@ -255,7 +263,11 @@ void define_esp_potential(py::module& m)
             Construct parameter set for ESP contact.
 
             Parameters:
-                dhat, dbar_factor, quad_order, area_weights, integration_type
+                dhat: Activation distance of the barrier.
+                dbar_factor: Edge-edge mollifier support, as a factor of dhat.
+                quad_order: Gauss-Lobatto edge quadrature order (2D).
+                area_weights: Whether to weight the quadrature by area.
+                integration_type: Which obstacle primitives to integrate.
             )ipc_Qu8mg5v7",
             py::arg("dhat"), py::arg("dbar_factor") = 1.0,
             py::arg("quad_order") = 1, py::arg("area_weights") = true,
@@ -271,11 +283,11 @@ void define_esp_potential(py::module& m)
         .def(
             py::init<const ESPParameters&, const bool>(),
             R"ipc_Qu8mg5v7(
-            Construct a smooth barrier potential.
+            Construct an Extremum Sum Potential (ESP).
 
             Parameters:
                 param: A set of parameters.
-                use_near_far: Whether to normalize quadrature weights so they sum to 1.
+                use_near_far: Whether to normalize the quadrature weights so they sum to 1, splitting near and far contributions when 0 < dbar_factor < 1.
             )ipc_Qu8mg5v7",
             py::arg("param"), py::arg("use_near_far") = true)
         .def(

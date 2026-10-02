@@ -178,11 +178,10 @@ TEST_CASE("Edge-edge distance parallel", "[distance][edge-edge][parallel]")
     double alpha = GENERATE(take(10, random(0.01, 0.99)));
     double s = GENERATE(take(10, random(-5.0, 5.0)));
     const int n_random_edges = 20;
-    srand(0);
 
     for (int i = 0; i < n_random_edges; i++) {
-        Eigen::Vector3d ea0 = Eigen::Vector3d::Random();
-        Eigen::Vector3d ea1 = Eigen::Vector3d::Random();
+        const Eigen::Vector3d ea0 = Eigen::Vector3d::Random();
+        const Eigen::Vector3d ea1 = Eigen::Vector3d::Random();
         const double edge_len = (ea1 - ea0).norm();
 
         Eigen::Vector3d n = (ea1 - ea0).cross(Eigen::Vector3d::UnitX());
@@ -198,8 +197,6 @@ TEST_CASE("Edge-edge distance parallel", "[distance][edge-edge][parallel]")
             == Catch::Approx(0).margin(1e-14));
 
         const double distance = edge_edge_distance(ea0, ea1, eb0, eb1);
-        CAPTURE(
-            ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
         CHECK(distance == Catch::Approx(s * s).margin(1e-15));
 
         for (int dtype = 0; dtype < int(EdgeEdgeDistanceType::EA_EB); dtype++) {

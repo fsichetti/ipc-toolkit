@@ -65,7 +65,8 @@ public:
     /// @brief Detect all collision candidates needed for a given dimensional simulation.
     /// @param candidates The detected collision candidates (cleared first).
     /// @param all_types Also detect the candidate types that only ESP contact
-    ///                  needs (vertex-vertex and edge-vertex in 3D).
+    ///                  needs (vertex-vertex, edge-vertex, edge-face, and
+    ///                  face-face in 3D).
     void detect_collision_candidates(
         Candidates& candidates, bool all_types = false) const;
 

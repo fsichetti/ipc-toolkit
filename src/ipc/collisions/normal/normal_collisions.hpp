@@ -188,7 +188,20 @@ public:
     /// @brief Plane-vertex normal collisions.
     std::vector<PlaneVertexNormalCollision> pv_collisions;
 
-    void set_skip_obstacles(bool x) { m_skip_obstacles = x; }
+    /// @brief Get if the collision set skips obstacle surfaces.
+    bool skip_obstacles() const { return m_skip_obstacles; }
+
+    /// @brief Set if the collision set skips obstacle surfaces.
+    /// Obstacles are marked with CollisionMesh's obstacle_vertex. When set,
+    /// collisions are integrated over non-obstacle surfaces only: pairs whose
+    /// vertex is an obstacle and edge-edge pairs between two obstacle edges
+    /// are dropped, and edge-edge pairs with one obstacle edge get half weight.
+    /// @warning This must be set before the collisions are built.
+    /// @param skip_obstacles If the collision set should skip obstacle surfaces.
+    void set_skip_obstacles(const bool skip_obstacles)
+    {
+        m_skip_obstacles = skip_obstacles;
+    }
 
 protected:
     CollisionSetType m_collision_set_type = CollisionSetType::IPC;

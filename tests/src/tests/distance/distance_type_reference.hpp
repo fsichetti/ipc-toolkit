@@ -10,11 +10,9 @@ using namespace ipc;
 using ExReal = GEO::expansion_nt; // exact scalar type
 using ExVec3 = GEO::vec3E;        // exact vector
 
-// Mirrors the threshold used by ipc::edge_edge_distance_type's parallel-edge
-// handling. Kept as a local constant since production no longer exposes a
-// global PARALLEL_THRESHOLD (it is now a function-local constexpr, scaled per
-// scalar type).
-constexpr double PARALLEL_THRESHOLD = 2.5e-16;
+// Mirrors the relative sin² threshold of ipc::edge_edge_distance_type's
+// parallel-edge handling (and ipc::PARALLEL_THRESHOLD).
+constexpr double REFERENCE_PARALLEL_THRESHOLD = 2.5e-16;
 
 inline void init_pck()
 { // TODO init once in main
@@ -31,7 +29,7 @@ inline ExVec3 make_exact(Eigen::ConstRef<VectorMax3d> v)
     ExReal z { v.size() < 3 ? 0 : v.z() }; // compatibility with 2D vectors
     return ExVec3(std::move(x), std::move(y), std::move(z));
 }
-PointEdgeDistanceType point_edge_distance_type_exact(
+inline PointEdgeDistanceType point_edge_distance_type_reference(
     Eigen::ConstRef<VectorMax3d> p_,
     Eigen::ConstRef<VectorMax3d> e0_,
     Eigen::ConstRef<VectorMax3d> e1_)
@@ -51,7 +49,7 @@ PointEdgeDistanceType point_edge_distance_type_exact(
     }
 }
 
-PointTriangleDistanceType point_triangle_distance_type_exact(
+inline PointTriangleDistanceType point_triangle_distance_type_reference(
     Eigen::ConstRef<Eigen::Vector3d> p_,
     Eigen::ConstRef<Eigen::Vector3d> t0_,
     Eigen::ConstRef<Eigen::Vector3d> t1_,
@@ -96,7 +94,7 @@ PointTriangleDistanceType point_triangle_distance_type_exact(
     return PointTriangleDistanceType::P_T;
 }
 
-bool is_parallel_edge_edge_exact(
+inline bool is_parallel_edge_edge_reference(
     Eigen::ConstRef<Eigen::Vector3d> ea0_,
     Eigen::ConstRef<Eigen::Vector3d> ea1_,
     Eigen::ConstRef<Eigen::Vector3d> eb0_,
@@ -113,14 +111,14 @@ bool is_parallel_edge_edge_exact(
     const ExVec3 v = eb1 - eb0;
 
     const ExReal cross_norm_sqr = cross(u, v).length2();
-    if constexpr (PARALLEL_THRESHOLD == 0.0)
+    if constexpr (REFERENCE_PARALLEL_THRESHOLD == 0.0)
         return cross_norm_sqr == 0;
     const ExReal a = u.length2();
     const ExReal c = v.length2();
-    return cross_norm_sqr < a * c * PARALLEL_THRESHOLD;
+    return cross_norm_sqr < a * c * REFERENCE_PARALLEL_THRESHOLD;
 }
 
-EdgeEdgeDistanceType edge_edge_parallel_distance_type_exact(
+inline EdgeEdgeDistanceType edge_edge_parallel_distance_type_reference(
     Eigen::ConstRef<Eigen::Vector3d> ea0_,
     Eigen::ConstRef<Eigen::Vector3d> ea1_,
     Eigen::ConstRef<Eigen::Vector3d> eb0_,
@@ -170,15 +168,15 @@ EdgeEdgeDistanceType edge_edge_parallel_distance_type_exact(
 ///        that are *exactly* parallel take the parallel branch. Any non-zero
 ///        value makes this a hybrid (exact arithmetic, approximate parallelism
 ///        test) which can misclassify near-parallel edges, since
-///        edge_edge_parallel_distance_type_exact is only valid for genuinely
-///        parallel edges. Defaults to the library's PARALLEL_THRESHOLD so the
+///        edge_edge_parallel_distance_type_reference is only valid for
+///        genuinely parallel edges. Defaults to the library's threshold so the
 ///        reference mirrors the shipped behaviour unless asked otherwise.
-EdgeEdgeDistanceType edge_edge_distance_type_exact(
+inline EdgeEdgeDistanceType edge_edge_distance_type_reference(
     Eigen::ConstRef<Eigen::Vector3d> ea0_,
     Eigen::ConstRef<Eigen::Vector3d> ea1_,
     Eigen::ConstRef<Eigen::Vector3d> eb0_,
     Eigen::ConstRef<Eigen::Vector3d> eb1_,
-    const double parallel_threshold = PARALLEL_THRESHOLD)
+    const double parallel_threshold = REFERENCE_PARALLEL_THRESHOLD)
 {
     init_pck();
     const ExVec3 ea0 = make_exact(ea0_);
@@ -215,7 +213,8 @@ EdgeEdgeDistanceType edge_edge_distance_type_exact(
         is_parallel = cross_norm_sqr < a * c * parallel_threshold;
     }
     if (is_parallel) {
-        return edge_edge_parallel_distance_type_exact(ea0_, ea1_, eb0_, eb1_);
+        return edge_edge_parallel_distance_type_reference(
+            ea0_, ea1_, eb0_, eb1_);
     }
 
     EdgeEdgeDistanceType default_case = EdgeEdgeDistanceType::EA_EB;

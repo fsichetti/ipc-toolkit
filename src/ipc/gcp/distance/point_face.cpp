@@ -297,50 +297,6 @@ Eigen::Vector3<scalar> point_triangle_closest_point_direction(
     }
 }
 
-template ADGrad<12> point_triangle_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> p,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> t0,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> t1,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> t2,
-    PointTriangleDistanceType dtype);
-
-template ADHessian<12> point_triangle_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> p,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> t0,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> t1,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> t2,
-    PointTriangleDistanceType dtype);
-template ADGrad<13> point_triangle_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<13>>> p,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<13>>> t0,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<13>>> t1,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<13>>> t2,
-    PointTriangleDistanceType dtype);
-template ADHessian<13> point_triangle_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<13>>> p,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<13>>> t0,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<13>>> t1,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<13>>> t2,
-    PointTriangleDistanceType dtype);
-template ADGrad<21> point_triangle_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<21>>> p,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<21>>> t0,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<21>>> t1,
-    Eigen::ConstRef<Eigen::Vector3<ADGrad<21>>> t2,
-    PointTriangleDistanceType dtype);
-template ADHessian<21> point_triangle_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<21>>> p,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<21>>> t0,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<21>>> t1,
-    Eigen::ConstRef<Eigen::Vector3<ADHessian<21>>> t2,
-    PointTriangleDistanceType dtype);
-template double point_triangle_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3d> p,
-    Eigen::ConstRef<Eigen::Vector3d> t0,
-    Eigen::ConstRef<Eigen::Vector3d> t1,
-    Eigen::ConstRef<Eigen::Vector3d> t2,
-    PointTriangleDistanceType dtype);
-
 template Eigen::Vector3<ADGrad<12>> point_triangle_closest_point_direction(
     Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> p,
     Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> t0,

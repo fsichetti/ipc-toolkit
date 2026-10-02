@@ -273,7 +273,8 @@ class TestESPPotential(unittest.TestCase):
     def test_parameter_defaults(self):
         self.assertTrue(self.params.area_weights)
         self.assertEqual(
-            self.params.integration_type, ipctk.IntegrationType.NORMAL)
+            self.params.integration_type,
+            ipctk.ESPParameters.IntegrationType.NORMAL)
 
     def test_gradient_matches_finite_differences(self):
         args = (self.collisions, self.mesh)

@@ -3,11 +3,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
-#include <catch2/benchmark/catch_benchmark.hpp>
 
 #include <ipc/potentials/barrier_potential.hpp>
 #include <ipc/esp/esp_potential.hpp>
-#include <ipc/esp/adaptive_support.hpp>
 #include <ipc/distance/line_line.hpp>
 
 #include <finitediff.hpp>
@@ -16,11 +14,9 @@
 #include <ipc/ipc.hpp>
 
 #include "igl/read_triangle_mesh.h"
-#include "igl/write_triangle_mesh.h"
 #include "ipc/distance/edge_edge.hpp"
 
 #include "ipc/esp/quadrature_potential.hpp"
-#include <chrono>
 
 #include <cmath>
 
@@ -237,18 +233,11 @@ TEST_CASE(
     ESPParameters params(dhat, dbar_factor, 0);
 
     const bool use_near_far = GENERATE(true, false);
-    const bool use_adaptive = GENERATE(true, false);
-    CAPTURE(use_near_far, use_adaptive, dbar_factor);
+    CAPTURE(use_near_far, dbar_factor);
     ESPPotential potential(params, use_near_far);
 
-    // Compute adaptive support once so every FD step uses identical dhat
-    // values.
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
-
     ESPCollisions collisions;
-    collisions.build(mesh, V, params, adaptive.get());
+    collisions.build(mesh, V, params);
     REQUIRE(!collisions.empty());
 
     // full finite difference is too expensive, verify directional derivative
@@ -269,7 +258,7 @@ TEST_CASE(
             [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 ESPCollisions collisions_;
-                collisions_.build(mesh, V_, params, adaptive.get());
+                collisions_.build(mesh, V_, params);
                 return potential(collisions_, mesh, V_);
             },
             fg, fd::AccuracyOrder::FOURTH, 1e-5);
@@ -288,7 +277,7 @@ TEST_CASE(
             [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 ESPCollisions collisions_;
-                collisions_.build(mesh, V_, params, adaptive.get());
+                collisions_.build(mesh, V_, params);
                 return potential.gradient(collisions_, mesh, V_);
             },
             fh, fd::AccuracyOrder::FOURTH, 1e-5);
@@ -299,13 +288,9 @@ TEST_CASE(
     }
 }
 
-#if defined(NDEBUG) && !defined(WIN32)
-static std::string tagsopt = "[esp_potential], [esp_potential_3d]";
-#else
-static std::string tagsopt = "[.][esp_potential], [.][esp_potential_3d]";
-#endif
-
-TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
+TEST_CASE(
+    "Convergent Quadrature Gradient and Hessian Expensive",
+    "[.][esp_potential][esp_potential_3d]")
 {
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
@@ -313,13 +298,8 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
     ESPParameters params(dhat, dbar_factor, 0);
 
-    const bool use_adaptive = GENERATE(true, false);
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
-
     ESPCollisions collisions;
-    collisions.build(mesh, V, params, adaptive.get());
+    collisions.build(mesh, V, params);
 
     const bool normalize_weights = GENERATE(true, false);
     ESPPotential potential(params, normalize_weights);
@@ -334,7 +314,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
             [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = fd::unflatten(y, 3);
                 ESPCollisions collisions_;
-                collisions_.build(mesh, V_, params, adaptive.get());
+                collisions_.build(mesh, V_, params);
                 return potential(collisions_, mesh, V_);
             },
             fg, fd::AccuracyOrder::SECOND, 1e-8);
@@ -352,7 +332,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
             [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = fd::unflatten(y, 3);
                 ESPCollisions collisions_;
-                collisions_.build(mesh, V_, params, adaptive.get());
+                collisions_.build(mesh, V_, params);
                 return potential.gradient(collisions_, mesh, V_);
             },
             fh, fd::AccuracyOrder::SECOND, 1e-8);
@@ -372,12 +352,8 @@ TEST_CASE(
     const double dbar_factor = GENERATE(1.0, 0.9);
     ESPParameters params(dhat, dbar_factor, 0);
 
-    const bool adaptive_dhat = GENERATE(true, false);
-    auto adaptive = adaptive_dhat
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
     ESPCollisions collisions;
-    collisions.build(mesh, V, params, adaptive.get());
+    collisions.build(mesh, V, params);
 
     ESPPotential potential(params);
     double val = potential(collisions, mesh, V);
@@ -390,64 +366,6 @@ TEST_CASE(
     REQUIRE(H.norm() == 0);
 }
 
-TEST_CASE("Number of Pairs", "[esp_potential], [esp_potential_3d]")
-{
-    double dhat = -1;
-    std::string mesh_name;
-    // SECTION("mesh1")
-    // {
-    //     dhat = 1e-2;
-    //     mesh_name = "bunny.ply";
-    // }
-    SECTION("mesh2")
-    {
-        dhat = 1e-2;
-        mesh_name = "armadillo-rollers/327.ply";
-    }
-
-    Eigen::MatrixXd vertices;
-    Eigen::MatrixXi edges, faces;
-    bool success = tests::load_mesh(mesh_name, vertices, edges, faces);
-    REQUIRE(success);
-    CAPTURE(mesh_name);
-
-    CollisionMesh mesh;
-    mesh = CollisionMesh(
-        std::vector<bool>(vertices.rows(), true),
-        std::vector<bool>(vertices.rows(), false), vertices, edges, faces);
-
-    {
-        ESPCollisions collisions;
-        ESPParameters params(dhat, 1., 0);
-        collisions.build(mesh, vertices, params);
-
-        std::cout << "ESP collision size " << collisions.size() << std::endl;
-    }
-
-    {
-        NormalCollisions collisions;
-        collisions.build(mesh, vertices, dhat);
-
-        std::cout << "normal collision size " << collisions.size() << std::endl;
-    }
-
-    {
-        ESPCollisions collisions;
-        ESPParameters params(dhat, 1., 0);
-        collisions.build(mesh, vertices, params);
-
-        std::cout << "ESP collision pairs (before cancellation) "
-                  << collisions.num_quadrature_collision_pairs << std::endl;
-
-        const auto dist = collisions.edge_id_count_distribution();
-        std::cout << "edge id count distribution (count: num_edges):"
-                  << std::endl;
-        for (const auto& [count, num_edges] : dist) {
-            std::cout << "  " << count << ": " << num_edges << ", ";
-        }
-    }
-}
-
 TEST_CASE(
     "Convergent Quadrature Vertex Hessian",
     "[esp_potential], [esp_potential_3d]")
@@ -458,11 +376,6 @@ TEST_CASE(
     const double dhat = 0.15;
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
     ESPParameters params(dhat, dbar_factor, 0);
-
-    const bool use_adaptive = GENERATE(true, false);
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
 
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
@@ -482,7 +395,7 @@ TEST_CASE(
         {
             Eigen::VectorXd local_grad = PointPotentialHelper::
                 evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                    V, *collisions, params, adaptive.get());
+                    V, *collisions, params);
             indices = collisions->dofs();
 
             if (local_grad.norm() < 1e-10) {
@@ -492,8 +405,7 @@ TEST_CASE(
 
         Eigen::MatrixXd h = PointPotentialHelper::
             evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                V, *collisions, params, adaptive.get(),
-                PSDProjectionMethod::NONE);
+                V, *collisions, params, PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -505,7 +417,7 @@ TEST_CASE(
 
                 return PointPotentialHelper::
                     evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                        V_fd, *collisions, params, adaptive.get());
+                        V_fd, *collisions, params);
             },
             fh, fd::AccuracyOrder::SECOND, 1e-8);
 
@@ -523,11 +435,6 @@ TEST_CASE(
     const double dhat = 0.15;
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
     ESPParameters params(dhat, dbar_factor, 0);
-
-    const bool use_adaptive = GENERATE(true, false);
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
 
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
@@ -556,7 +463,7 @@ TEST_CASE(
         {
             Eigen::VectorXd local_grad = PointPotentialHelper::
                 evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                    V_extended, *collisions, params, adaptive.get());
+                    V_extended, *collisions, params);
             indices = collisions->dofs();
 
             if (local_grad.norm() < 1e-10) {
@@ -566,8 +473,7 @@ TEST_CASE(
 
         Eigen::MatrixXd h = PointPotentialHelper::
             evaluate_potential_hessian_at_face_center_with_cached_collisions(
-                V_extended, *collisions, params, adaptive.get(),
-                PSDProjectionMethod::NONE);
+                V_extended, *collisions, params, PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -583,7 +489,7 @@ TEST_CASE(
 
                 return PointPotentialHelper::
                     evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                        V_fd_extended, *collisions, params, adaptive.get());
+                        V_fd_extended, *collisions, params);
             },
             fh, fd::AccuracyOrder::SECOND, 1e-8);
 
@@ -603,12 +509,11 @@ TEST_CASE(
     const auto method = make_default_broad_phase();
 
     // Load cube mesh
-    std::string cube_path = (tests::DATA_DIR / "cube.obj").string();
+    const std::string cube_path =
+        (tests::DATA_DIR / "../src/tests/potential/cube.obj").string();
     Eigen::MatrixXd V_single;
     Eigen::MatrixXi F_single;
-    if (!igl::read_triangle_mesh(cube_path, V_single, F_single)) {
-        SKIP("Could not load cube.obj");
-    }
+    REQUIRE(igl::read_triangle_mesh(cube_path, V_single, F_single));
 
     // Create two cubes: one fixed, one translated slightly
     Eigen::MatrixXd V(V_single.rows() * 2, 3);
@@ -632,24 +537,12 @@ TEST_CASE(
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
     ESPParameters params(dhat, dbar_factor, 0);
 
-    const bool use_adaptive = GENERATE(true, false);
-    CAPTURE(use_adaptive);
-
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
-    if (adaptive) {
-        adaptive->scale(
-            1.2); // manually scale adaptive dhat so energy is not zero
-    }
-
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
     candidates.convert_candidates_to_sets();
 
     ESPCollisions collisions;
-    collisions.build(candidates, mesh, V, params, adaptive.get());
-    std::cerr << "ESPCollisions after build: " << collisions.size() << "\n";
+    collisions.build(candidates, mesh, V, params);
 
     REQUIRE(!collisions.empty());
     REQUIRE(!has_intersections(mesh, V));
@@ -660,9 +553,7 @@ TEST_CASE(
     CHECK(energy > 0);
     CHECK(std::isfinite(energy));
 
-    // Test gradient accuracy: without mollification of (u,v),
-    // this will fail when closest point is near face edges where adaptive dhat
-    // varies
+    // Test gradient accuracy
     Eigen::VectorXd grad = potential.gradient(collisions, mesh, V);
     Eigen::VectorXd fgrad;
     fd::finite_gradient(
@@ -686,6 +577,30 @@ TEST_CASE(
 
 // 2D TESTS //
 
+TEST_CASE(
+    "ESP vertex quadrature ignores quad_order in 3D",
+    "[esp_potential], [esp_potential_3d]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E, F;
+    REQUIRE(tests::load_mesh("two-cubes-close.ply", V, E, F));
+    const CollisionMesh mesh(V, E, F);
+    const double dhat = 0.1;
+
+    // Without a face quadrature rule, 3D integrates over the face vertices;
+    // quad_order only sets the 2D edge quadrature.
+    const auto potential_value = [&](const int quad_order) {
+        const ESPParameters params(dhat, 1.0, quad_order);
+        ESPCollisions collisions;
+        collisions.build(mesh, V, params);
+        return ESPPotential(params)(collisions, mesh, V);
+    };
+    const double expected = potential_value(0);
+    REQUIRE(expected > 0);
+    CHECK(potential_value(1) == Catch::Approx(expected).epsilon(1e-12));
+    CHECK(potential_value(2) == Catch::Approx(expected).epsilon(1e-12));
+}
+
 TEST_CASE("ESP potential codim", "[esp_potential], [esp_potential_2d]")
 {
     const auto method = make_default_broad_phase();
@@ -702,7 +617,7 @@ TEST_CASE("ESP potential codim", "[esp_potential], [esp_potential_2d]")
     CollisionMesh mesh = make_2d_collision_mesh(vertices, edges);
 
     ESPCollisions collisions;
-    collisions.build(mesh, vertices, params, nullptr, method.get());
+    collisions.build(mesh, vertices, params, method.get());
     CAPTURE(dhat, method);
     CHECK(!collisions.empty());
     CHECK(!has_intersections(mesh, vertices));
@@ -751,7 +666,6 @@ TEST_CASE("ESP potential 2D no forces", "[esp_potential], [esp_potential_2d]")
     const int quadrature_order = GENERATE(1, 2, 7, 10, 14);
     ESPParameters params(dhat, 1., quadrature_order);
 
-    const bool use_adaptive = GENERATE(true, false);
     std::string name;
     SECTION("square_1")
     {
@@ -788,11 +702,8 @@ TEST_CASE("ESP potential 2D no forces", "[esp_potential], [esp_potential_2d]")
 
     CollisionMesh mesh = make_2d_collision_mesh(V, E);
 
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
     ESPCollisions collisions;
-    collisions.build(mesh, V, params, adaptive.get(), method.get());
+    collisions.build(mesh, V, params, method.get());
 
     REQUIRE(!has_intersections(mesh, V));
 
@@ -820,31 +731,23 @@ TEST_CASE(
     constexpr double BA = 0; // a small constant to break perfect alignments
     const int quadrature_order = GENERATE(1, 2, 7, 14);
     ESPParameters params(dhat, 1., quadrature_order);
-    const bool adaptive_dhat = GENERATE(true, false);
     CAPTURE(quadrature_order);
-    CAPTURE(adaptive_dhat);
 
     auto run_checks = [&]() {
         CollisionMesh mesh = make_2d_collision_mesh(V, E);
 
-        auto adaptive = adaptive_dhat
-            ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-            : nullptr;
-
         ESPCollisions collisions;
-        collisions.build(mesh, V, params, adaptive.get(), method.get());
+        collisions.build(mesh, V, params, method.get());
 
         REQUIRE(!collisions.empty());
         REQUIRE(!has_intersections(mesh, V));
 
         ESPPotential potential(params);
         double energy = potential(collisions, mesh, V);
-        if (!adaptive_dhat)
-            CHECK(energy > 0);
+        CHECK(energy > 0);
 
         Eigen::VectorXd grad = potential.gradient(collisions, mesh, V);
-        if (!adaptive_dhat)
-            REQUIRE(grad.squaredNorm() > 1e-8);
+        REQUIRE(grad.squaredNorm() > 1e-8);
         Eigen::VectorXd fgrad;
         fd::finite_gradient(
             fd::flatten(V),
@@ -859,8 +762,7 @@ TEST_CASE(
                 1e-4 * std::max({ grad.norm(), fgrad.norm(), 1e-8 }), 1e-9));
 
         Eigen::MatrixXd hess = potential.hessian(collisions, mesh, V);
-        if (!adaptive_dhat)
-            REQUIRE(hess.squaredNorm() > 1e-3);
+        REQUIRE(hess.squaredNorm() > 1e-3);
         Eigen::MatrixXd fhess;
         fd::finite_jacobian(
             fd::flatten(V),
@@ -950,21 +852,11 @@ TEST_CASE(
         0, 3, 6); // Using fekete rules, orders 1-2-3 and 4-5-6 are the same
     ESPParameters params(dhat, 1., quad_order);
 
-    const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     ESPPotential potential(params, normalize_weights);
 
-    // Compute once so every FD step uses identical dhat values.
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
-    if (adaptive) {
-        adaptive->scale(
-            1.2); // manually scale adaptive dhat so energy is not zero
-    }
-
     ESPCollisions collisions;
-    collisions.build(mesh, V, params, adaptive.get());
+    collisions.build(mesh, V, params);
 
     REQUIRE(potential(collisions, mesh, V) != 0);
 
@@ -985,7 +877,7 @@ TEST_CASE(
             [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 ESPCollisions c;
-                c.build(mesh, V_, params, adaptive.get());
+                c.build(mesh, V_, params);
                 return potential(c, mesh, V_);
             },
             fg, fd::AccuracyOrder::SECOND, 1e-7);
@@ -1003,7 +895,7 @@ TEST_CASE(
             [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 ESPCollisions c;
-                c.build(mesh, V_, params, adaptive.get());
+                c.build(mesh, V_, params);
                 return potential.gradient(c, mesh, V_);
             },
             fh, fd::AccuracyOrder::SECOND, 1e-6);
@@ -1024,18 +916,14 @@ TEST_CASE(
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
     ESPParameters params(dhat, dbar_factor, 0);
 
-    const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     const PSDProjectionMethod psd_method =
         GENERATE(PSDProjectionMethod::CLAMP, PSDProjectionMethod::ABS);
 
     ESPPotential potential(params, normalize_weights);
 
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
     ESPCollisions collisions;
-    collisions.build(mesh, V, params, adaptive.get());
+    collisions.build(mesh, V, params);
 
     Eigen::SparseMatrix<double> H =
         potential.hessian(collisions, mesh, V, psd_method);
@@ -1144,136 +1032,6 @@ TEST_CASE("NearFarBarrier decomposition", "[esp_potential][barrier]")
     }
 }
 
-// ---------------------------------------------------------------------------
-// Adaptive support tests
-// ---------------------------------------------------------------------------
-
-// With a large dhat, many pairs are in contact without adaptive support.
-// After computing the adaptive support (which iteratively shrinks per-vertex
-// dhat until every primitive is beyond its own dhat), the potential must be
-// exactly zero.
-TEST_CASE(
-    "Adaptive Support Reduces Potential to Zero (3D)",
-    "[adaptive_support], [esp_potential_3d]")
-{
-    auto [V, E, F, mesh] = load_wrapped_sphere();
-
-    // dhat = 0.3 is intentionally large: many vertex pairs are within range,
-    // so the potential without adaptive support is clearly non-zero.
-    const double dhat = 10;
-    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
-    ESPParameters params(dhat, dbar_factor, 0);
-    ESPPotential potential(params);
-
-    // Baseline: without adaptive, potential must be non-zero.
-    {
-        ESPCollisions collisions;
-        collisions.build(mesh, V, params);
-        const double energy = potential(collisions, mesh, V);
-        REQUIRE(energy > 0);
-    }
-
-    // With adaptive support the per-primitive dhat values are reduced until
-    // no collision pair contributes, so the evaluated potential is exactly 0.
-    auto adaptive = ESPCollisions::compute_adaptive_dhat(mesh, V, params);
-    REQUIRE(adaptive != nullptr);
-
-    // All vertex dhat values must be in (0, params.dhat] after reduction.
-    bool any_reduced = false;
-    for (int i = 0; i < mesh.num_vertices(); i++) {
-        CHECK(adaptive->vertex(i) > 0.0);
-        CHECK(adaptive->vertex(i) <= dhat);
-        if (adaptive->vertex(i) < dhat)
-            any_reduced = true;
-    }
-    CHECK(any_reduced);
-
-    {
-        ESPCollisions collisions;
-        collisions.build(mesh, V, params, adaptive.get());
-        const double energy = potential(collisions, mesh, V);
-        CHECK(energy == 0.0);
-    }
-}
-
-TEST_CASE(
-    "Adaptive Support Reduces Potential to Zero (2D)",
-    "[adaptive_support], [esp_potential_2d]")
-{
-    const auto method = make_default_broad_phase();
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi E;
-
-    SECTION("Corners")
-    {
-        const double P0x = GENERATE(.01, -.01, 0.0);
-        const double P1y = GENERATE(.49, .5, .51);
-        CAPTURE(P0x, P1y);
-        V.resize(8, 2);
-        E.resize(8, 2);
-        V << -1., 1., -1., 0., 0., 0., P0x, .5, 0., 1., 1., 0., 1., 1., .02,
-            P1y;
-        E << 0, 1, 1, 2, 2, 3, 3, 4, 4, 0, 5, 6, 6, 7, 7, 5;
-    }
-
-    SECTION("squares")
-    {
-        V.resize(8, 2);
-        E.resize(8, 2);
-        E << 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4;
-        SECTION("horizontal_squares")
-        {
-            INFO("horizontal_squares");
-            V << -1., 1., -1., 0., -.1, 0., -.1, 1., .1, 1., .1, 0., 1., 0., 1.,
-                1.;
-        }
-        SECTION("vertical_squares")
-        {
-            INFO("vertical_squares");
-            V << 0., -1., 1., -1., 1., -.1, 0., -.1, 0., .1, 1., .1, 1., 1., 0.,
-                1.;
-        }
-    }
-
-    CollisionMesh mesh = make_2d_collision_mesh(V, E);
-    REQUIRE(!has_intersections(mesh, V));
-
-    const double dhat = 10.;
-    const int quad_order = 14;
-    ESPParameters params(dhat, 1.0, quad_order);
-    ESPPotential potential(params);
-
-    // Baseline: without adaptive, potential must be non-zero.
-    {
-        ESPCollisions collisions;
-        collisions.build(mesh, V, params, nullptr, method.get());
-        const double energy = potential(collisions, mesh, V);
-        REQUIRE(energy != 0);
-    }
-
-    // With adaptive support: per-primitive dhat values fall below 0.2
-    // so the barrier is exactly zero for every pair.
-    auto adaptive = ESPCollisions::compute_adaptive_dhat(mesh, V, params);
-    REQUIRE(adaptive != nullptr);
-
-    // Primitive vertices (those on the far edge) must have reduced dhat.
-    bool any_reduced = false;
-    for (int i = 0; i < mesh.num_vertices(); i++) {
-        CHECK(adaptive->vertex(i) > 0.0);
-        CHECK(adaptive->vertex(i) <= dhat);
-        if (adaptive->vertex(i) < dhat)
-            any_reduced = true;
-    }
-    REQUIRE(any_reduced);
-
-    {
-        ESPCollisions collisions;
-        collisions.build(mesh, V, params, adaptive.get(), method.get());
-        const double energy = potential(collisions, mesh, V);
-        CHECK(energy == 0.0);
-    }
-}
-
 // Same check for the 3D face-quadrature variant: ESP quadrature points
 // inside each face must also yield a PSD assembly under combined projection.
 TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
@@ -1285,18 +1043,14 @@ TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
     ESPParameters params(dhat, dbar_factor, quad_order);
 
-    const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     const PSDProjectionMethod psd_method =
         GENERATE(PSDProjectionMethod::CLAMP, PSDProjectionMethod::ABS);
 
     ESPPotential potential(params, normalize_weights);
 
-    auto adaptive = use_adaptive
-        ? ESPCollisions::compute_adaptive_dhat(mesh, V, params)
-        : nullptr;
     ESPCollisions collisions;
-    collisions.build(mesh, V, params, adaptive.get());
+    collisions.build(mesh, V, params);
 
     Eigen::SparseMatrix<double> H =
         potential.hessian(collisions, mesh, V, psd_method);

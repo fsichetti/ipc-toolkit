@@ -1,6 +1,5 @@
 #pragma once
 
-#include "adaptive_support.hpp"
 #include "collisions/esp_collision.hpp"
 #include "collisions/esp_collision_dict.hpp"
 
@@ -8,7 +7,6 @@
 #include <ipc/candidates/candidates.hpp>
 #include <ipc/collisions/normal/edge_edge.hpp>
 
-#include <map>
 #include <memory>
 
 namespace ipc {
@@ -16,13 +14,6 @@ class ESPCollisions {
 public:
     ESPCollisions();
     virtual ~ESPCollisions();
-
-    /// @brief Compute per-vertex adaptive dhat values. The returned object can
-    ///        be passed to build() to avoid recomputing it on every rebuild.
-    static std::unique_ptr<AdaptiveSupport> compute_adaptive_dhat(
-        const CollisionMesh& mesh,
-        Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const ESPParameters& params);
 
     /// @brief Initialize the set of collisions used to compute the barrier potential.
     /// @param mesh The collision mesh.
@@ -34,17 +25,9 @@ public:
         const ESPParameters params,
         BroadPhase* broad_phase = nullptr);
 
-    /// @brief Build using a pre-computed AdaptiveSupport (copied internally;
-    ///        pass nullptr to build without adaptive dhat).
-    void build(
-        const CollisionMesh& mesh,
-        Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const ESPParameters params,
-        const AdaptiveSupport* adaptive,
-        BroadPhase* broad_phase = nullptr);
-
     /// @brief Initialize the set of collisions used to compute the barrier potential.
     /// @param candidates Distance candidates from which the collision set is built.
+    ///                   In 3D, build them with all_types = true.
     /// @param mesh The collision mesh.
     /// @param vertices Vertices of the collision mesh.
     void build(
@@ -52,14 +35,6 @@ public:
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const ESPParameters params);
-
-    /// @brief Build from candidates using a pre-computed AdaptiveSupport (copied internally).
-    void build(
-        const Candidates& _candidates,
-        const CollisionMesh& mesh,
-        Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const ESPParameters params,
-        const AdaptiveSupport* adaptive);
 
     // ------------------------------------------------------------------------
 
@@ -89,20 +64,7 @@ public:
     /// @brief Number of contact candidates
     int n_candidates() const { return m_candidates.size(); }
 
-    /// @brief Count occurrences of each edge id across all edge_edge_collisions keys.
-    /// @return A map from occurrence count to the number of edge ids with that count.
-    std::map<size_t, size_t> edge_id_count_distribution() const;
-
-    /// @brief Get per-edge collision counts as a vector.
-    /// @param num_edges Total number of edges in the collision mesh.
-    /// @return A vector of size num_edges where entry i counts how many
-    ///         edge-edge collision pairs involve edge i (as first element).
-    Eigen::VectorXd edge_collision_counts(size_t num_edges) const;
-
 public:
-    /// @brief per-vertex adaptive dhat interpolated on edges/faces
-    std::unique_ptr<AdaptiveSupport> adaptive_dhat = nullptr;
-
     /// @brief Collision candidates
     Candidates m_candidates;
 

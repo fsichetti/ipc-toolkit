@@ -4,11 +4,7 @@
 #include <ipc/esp/esp_collisions.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
-#include <map>
-
 namespace ipc {
-
-// Flag to control parallelism in potential evaluation
 
 class ESPPotential {
 public:
@@ -83,21 +79,14 @@ public:
         const PSDProjectionMethod project_hessian_to_psd =
             PSDProjectionMethod::NONE) const;
 
-    using CountMap = std::map<index_t, unsigned>;
-    const CountMap& get_edge_evaluation_count() const
-    {
-        return m_edge_evaluation_count;
-    }
-
     bool get_use_near_far() const { return use_near_far; }
 
 protected:
-    /// @brief GCP parameters for collision potential
+    /// @brief ESP parameters for collision potential
     ESPParameters params;
-    /// @brief Whether to normalize quadrature weights so they sum to 1
+    /// @brief Whether to normalize the quadrature weights so they sum to 1,
+    ///        splitting near and far contributions when 0 < dbar_factor < 1.
     const bool use_near_far;
-
-    mutable CountMap m_edge_evaluation_count;
 };
 
 } // namespace ipc

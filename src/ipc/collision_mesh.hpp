@@ -138,7 +138,7 @@ public:
         return m_is_orient_vertex[i];
     }
 
-    /// @brief Check if vertex i is orientable.
+    /// @brief Check if vertex i is from an obstacle.
     bool is_obstacle_vertex(const index_t i) const
     {
         return m_is_obstacle_vertex[i];
@@ -331,18 +331,6 @@ public:
         return m_edge_vertex_adjacencies;
     }
 
-    const std::vector<std::array<int, 2>>& edge_face_adjacencies() const
-    {
-        if (dim() != 3) {
-            log_and_throw_error(
-                "Edge-face adjacencies is only available in 3D.");
-        }
-        if (m_edge_face_adjacencies.empty()) {
-            log_and_throw_error("Call init_adjacencies() first.");
-        }
-        return m_edge_face_adjacencies;
-    }
-
     /// @brief Determine if the adjacencies have been initialized by calling init_adjacencies().
     bool are_adjacencies_initialized() const
     {
@@ -367,6 +355,7 @@ public:
     /// @brief Get the barycentric area of the vertices.
     const Eigen::VectorXd& vertex_areas() const { return m_vertex_areas; }
 
+    /// @brief Get the area of the faces (3D).
     const Eigen::VectorXd& face_areas() const { return m_face_areas; }
 
     /// @brief Get the gradient of the barycentric area of a vertex wrt the rest positions of all points.
@@ -428,8 +417,6 @@ public:
     static Eigen::MatrixXi construct_faces_to_edges(
         Eigen::ConstRef<Eigen::MatrixXi> faces,
         Eigen::ConstRef<Eigen::MatrixXi> edges);
-
-    bool is_watertight() const;
 
     /// @brief Convert a matrix meant for M_V * vertices to M_dof * x by duplicating the entries dim times.
     static Eigen::SparseMatrix<double> vertex_matrix_to_dof_matrix(
@@ -515,12 +502,6 @@ protected:
     /// @brief Vertices adjacent to vertices
     std::vector<std::vector<index_t>> m_vertex_vertex_adjacencies;
     /// @brief Edges adjacent to vertices
-    // std::vector<unordered_set<int>> m_vertex_edge_adjacencies;
-    /// @brief Vertices adjacent to edges
-    // std::vector<unordered_set<int>> m_edge_vertex_adjacencies;
-    /// @brief Faces adjacent to edges
-    std::vector<std::array<int, 2>> m_edge_face_adjacencies;
-
     std::vector<std::vector<index_t>> m_vertex_edge_adjacencies;
     /// @brief Faces adjacent to vertices
     std::vector<std::vector<index_t>> m_vertex_face_adjacencies;

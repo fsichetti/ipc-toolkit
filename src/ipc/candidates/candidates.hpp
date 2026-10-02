@@ -25,6 +25,8 @@ public:
     /// @param vertices Surface vertex positions (rowwise).
     /// @param inflation_radius Amount to inflate the bounding boxes.
     /// @param broad_phase Broad phase method to use.
+    /// @param all_types Also detect the candidate types only ESP needs (see
+    ///                  BroadPhase::detect_collision_candidates).
     void build(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
@@ -39,6 +41,8 @@ public:
     /// @param vertices_t1 Surface vertex ending positions (rowwise).
     /// @param inflation_radius Amount to inflate the bounding boxes.
     /// @param broad_phase Broad phase method to use.
+    /// @param all_types Also detect the candidate types only ESP needs (see
+    ///                  BroadPhase::detect_collision_candidates).
     void build(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices_t0,
@@ -240,19 +244,30 @@ public:
         Eigen::ConstRef<Eigen::MatrixXi> edges,
         Eigen::ConstRef<Eigen::MatrixXi> faces) const;
 
+    /// @brief Build per-primitive adjacency sets from the candidates.
+    /// @note Required before calling any of the *_set() queries below.
     void convert_candidates_to_sets();
 
-    std::set<index_t> vv_set(index_t id) const;
+    /// @brief Vertices near vertex id (2D: also the endpoints of nearby edges).
+    std::set<index_t> vv_set(const CollisionMesh& mesh, index_t id) const;
+    /// @brief Edges near vertex id.
     std::set<index_t> ve_set(index_t id) const;
+    /// @brief Faces near vertex id.
     std::set<index_t> vf_set(index_t id) const;
 
-    std::set<index_t> ev_set(index_t id) const;
-    std::set<index_t> ee_set(index_t id) const;
-    std::set<index_t> ef_set(index_t id) const;
+    /// @brief Vertices near edge id, including its endpoints.
+    std::set<index_t> ev_set(const CollisionMesh& mesh, index_t id) const;
+    /// @brief Edges near or adjacent to edge id, excluding id.
+    std::set<index_t> ee_set(const CollisionMesh& mesh, index_t id) const;
+    /// @brief Faces near or adjacent to edge id, excluding faces containing id.
+    std::set<index_t> ef_set(const CollisionMesh& mesh, index_t id) const;
 
-    std::set<index_t> fv_set(index_t id) const;
-    std::set<index_t> fe_set(index_t id) const;
-    std::set<index_t> ff_set(index_t id) const;
+    /// @brief Vertices near face id, including its corners.
+    std::set<index_t> fv_set(const CollisionMesh& mesh, index_t id) const;
+    /// @brief Edges near or adjacent to face id.
+    std::set<index_t> fe_set(const CollisionMesh& mesh, index_t id) const;
+    /// @brief Faces near or adjacent to face id, excluding id.
+    std::set<index_t> ff_set(const CollisionMesh& mesh, index_t id) const;
 
 public:
     std::vector<VertexVertexCandidate> vv_candidates;
@@ -263,8 +278,6 @@ public:
 
     std::vector<EdgeFaceCandidate> ef_candidates;
     std::vector<FaceFaceCandidate> ff_candidates;
-
-    CollisionMesh m_mesh;
 
 private:
     static bool default_is_active(double candidate) { return true; }
