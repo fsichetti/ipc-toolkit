@@ -4,6 +4,8 @@
 
 #include <Eigen/Geometry>
 
+#include <array>
+
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
 #include "fp_filters.h"
 
@@ -14,9 +16,9 @@
 
 namespace ipc {
 
-#ifdef IPC_TOOLKIT_WITH_GEOGRAM
 namespace {
 
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     // The predicates below take raw coordinate pointers and live in this
     // translation unit, so a classification's whole chain of filtered
     // predicates inlines into its public entry point. The entry point converts
@@ -27,7 +29,7 @@ namespace {
     using ExReal = GEO::expansion_nt; // exact scalar type
     using ExVec3 = GEO::vec3E;        // exact vector type
 
-    void init_pck()
+    void init_predicates()
     {
         struct PckInit {
             PckInit() { GEO::PCK::initialize(); }
@@ -131,6 +133,89 @@ namespace {
             : cross_dot_cross_2_exact(p0, p1, p2, p3);
     }
 
+#else
+    // Without geogram, the same predicates are evaluated in double precision.
+    // Their signs are not exact, but the classifiers below are built only from
+    // them, so the classifications stay mutually consistent as long as each
+    // predicate returns the same sign for the same arguments at every call
+    // site. E.g., a point-triangle P_E0 implies a point-edge P_E on that edge,
+    // which ESP asserts. Each predicate is kept out of line so that the
+    // compiler cannot contract (FMA) its arithmetic differently per call site.
+
+#if defined(_MSC_VER)
+#define IPC_DISTANCE_TYPE_NOINLINE __declspec(noinline)
+#else
+#define IPC_DISTANCE_TYPE_NOINLINE __attribute__((noinline))
+#endif
+
+    void init_predicates()
+    {
+        static const bool warned = [] {
+            logger().warn(
+                "IPC Toolkit was built without geogram, so the "
+                "*_distance_type_exact functions use floating-point "
+                "predicates: consistent with each other, but not exact. "
+                "Build with IPC_TOOLKIT_WITH_GEOGRAM=ON for exact "
+                "predicates.");
+            return true;
+        }();
+        (void)warned;
+    }
+
+    int sign(const double x) { return (x > 0) - (x < 0); }
+
+    /// @brief Sign of dot(p1-p0, p2-p0).
+    template <int dim>
+    IPC_DISTANCE_TYPE_NOINLINE int
+    dot3(const double* p0, const double* p1, const double* p2)
+    {
+        double s = 0;
+        for (int i = 0; i < dim; ++i) {
+            s += (p1[i] - p0[i]) * (p2[i] - p0[i]);
+        }
+        return sign(s);
+    }
+
+    using Vec3 = std::array<double, 3>;
+
+    /// @brief b - a.
+    Vec3 sub(const double* b, const double* a)
+    {
+        return { { b[0] - a[0], b[1] - a[1], b[2] - a[2] } };
+    }
+
+    /// @brief Sign of dot(cross(a, b), cross(c, d)).
+    int
+    cross_dot_cross(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d)
+    {
+        const double n0 = a[1] * b[2] - a[2] * b[1];
+        const double n1 = a[2] * b[0] - a[0] * b[2];
+        const double n2 = a[0] * b[1] - a[1] * b[0];
+        const double m0 = c[1] * d[2] - c[2] * d[1];
+        const double m1 = c[2] * d[0] - c[0] * d[2];
+        const double m2 = c[0] * d[1] - c[1] * d[0];
+        return sign(n0 * m0 + n1 * m1 + n2 * m2);
+    }
+
+    /// @brief Sign of dot(cross(p1-p0, p2-p0), cross(p3-p0, p1-p0)).
+    IPC_DISTANCE_TYPE_NOINLINE int cross_dot_cross_1(
+        const double* p0, const double* p1, const double* p2, const double* p3)
+    {
+        const Vec3 u = sub(p1, p0);
+        return cross_dot_cross(u, sub(p2, p0), sub(p3, p0), u);
+    }
+
+    /// @brief Sign of dot(cross(p1-p0, p2-p0), cross(p3-p0, p1-p2)).
+    IPC_DISTANCE_TYPE_NOINLINE int cross_dot_cross_2(
+        const double* p0, const double* p1, const double* p2, const double* p3)
+    {
+        return cross_dot_cross(
+            sub(p1, p0), sub(p2, p0), sub(p3, p0), sub(p1, p2));
+    }
+
+#undef IPC_DISTANCE_TYPE_NOINLINE
+#endif
+
     // -- Classifiers ----------------------------------------------------------
 
     template <int dim>
@@ -222,22 +307,19 @@ namespace {
     }
 
 } // namespace
-#endif // IPC_TOOLKIT_WITH_GEOGRAM
 
 PointEdgeDistanceType point_edge_distance_type_exact(
     Eigen::ConstRef<VectorMax3d> p,
     Eigen::ConstRef<VectorMax3d> e0,
     Eigen::ConstRef<VectorMax3d> e1)
 {
-#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     if (!DistanceTypeConfig::instance().use_standard()) {
         assert(p.size() == e0.size() && p.size() == e1.size());
-        init_pck();
+        init_predicates();
         return p.size() == 2
             ? point_edge_type<2>(p.data(), e0.data(), e1.data())
             : point_edge_type<3>(p.data(), e0.data(), e1.data());
     }
-#endif
     return point_edge_distance_type(p, e0, e1);
 }
 
@@ -247,12 +329,10 @@ PointTriangleDistanceType point_triangle_distance_type_exact(
     Eigen::ConstRef<Eigen::Vector3d> t1,
     Eigen::ConstRef<Eigen::Vector3d> t2)
 {
-#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     if (!DistanceTypeConfig::instance().use_standard()) {
-        init_pck();
+        init_predicates();
         return point_triangle_type(p.data(), t0.data(), t1.data(), t2.data());
     }
-#endif
     return point_triangle_distance_type(p, t0, t1, t2);
 }
 
@@ -280,7 +360,7 @@ bool is_parallel_edge_edge(
 {
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
     if constexpr (PARALLEL_THRESHOLD == 0.0) {
-        init_pck();
+        init_predicates();
         // TODO use a zero filter?
         const int s = cross_null_3d_filter(
             _ea0.data(), _ea1.data(), _eb0.data(), _eb1.data());
@@ -312,12 +392,10 @@ EdgeEdgeDistanceType edge_edge_distance_type_exact(
     Eigen::ConstRef<Eigen::Vector3d> eb0,
     Eigen::ConstRef<Eigen::Vector3d> eb1)
 {
-#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     if (!DistanceTypeConfig::instance().use_standard()) {
-        init_pck();
+        init_predicates();
         return edge_edge_type(ea0.data(), ea1.data(), eb0.data(), eb1.data());
     }
-#endif
     return edge_edge_distance_type(ea0, ea1, eb0, eb1);
 }
 

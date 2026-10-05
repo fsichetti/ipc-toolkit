@@ -1,6 +1,6 @@
 #include "arbitrary_point_esp.hpp"
 
-#include <ipc/distance/distance_type.hpp>
+#include <ipc/distance/distance_type_exact.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_triangle.hpp>
 #include <ipc/esp/collisions/esp_collision_template.hpp>
@@ -114,8 +114,9 @@ namespace {
 
         assert(vid != t0 && vid != t1 && vid != t2);
 
-        const PointTriangleDistanceType dtype = point_triangle_distance_type(
-            vertices(vid), vertices(t0), vertices(t1), vertices(t2));
+        const PointTriangleDistanceType dtype =
+            point_triangle_distance_type_exact(
+                vertices(vid), vertices(t0), vertices(t1), vertices(t2));
 
         const double dist_sqr = point_triangle_distance(
             vertices(vid), vertices(t0), vertices(t1), vertices(t2), dtype);
@@ -168,8 +169,8 @@ namespace {
         const index_t t0 = mesh.edges()(ei, 0);
         const index_t t1 = mesh.edges()(ei, 1);
 
-        const PointEdgeDistanceType dtype =
-            point_edge_distance_type(vertices(vid), vertices(t0), vertices(t1));
+        const PointEdgeDistanceType dtype = point_edge_distance_type_exact(
+            vertices(vid), vertices(t0), vertices(t1));
 
         const double dist_sqr = point_edge_distance(
             vertices(vid), vertices(t0), vertices(t1), dtype);
@@ -217,8 +218,8 @@ namespace {
         const index_t e0 = mesh.edges()(ei, 0);
         const index_t e1 = mesh.edges()(ei, 1);
 
-        const PointEdgeDistanceType dtype =
-            point_edge_distance_type(vertices(vid), vertices(e0), vertices(e1));
+        const PointEdgeDistanceType dtype = point_edge_distance_type_exact(
+            vertices(vid), vertices(e0), vertices(e1));
 
         const double dist_sqr = point_edge_distance(
             vertices(vid), vertices(e0), vertices(e1), dtype);

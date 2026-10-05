@@ -6,14 +6,15 @@
 #include <catch2/generators/catch_generators_random.hpp>
 
 #include <ipc/distance/distance_type.hpp>
+#include <ipc/distance/distance_type_exact.hpp>
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_triangle.hpp>
 
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
 #include "distance_type_reference.hpp"
-
-#include <ipc/distance/distance_type_exact.hpp>
 #endif
+
+#include <array>
 
 using namespace ipc;
 
@@ -170,6 +171,114 @@ TEST_CASE(
 }
 
 #endif // IPC_TOOLKIT_WITH_GEOGRAM
+
+// The *_exact classifiers must agree with each other whether or not their
+// predicates are exact (geogram), e.g., a point-triangle P_E0 implies a
+// point-edge P_E on that edge. ESP relies on this. The points are placed on or
+// near the region boundaries, where rounding makes the predicates near-ties.
+TEST_CASE(
+    "Exact distance-type classifiers are mutually consistent",
+    "[distance][distance-type][exact]")
+{
+    using PE = PointEdgeDistanceType;
+    using PT = PointTriangleDistanceType;
+    using EE = EdgeEdgeDistanceType;
+
+    const auto pe = [](const Eigen::Vector3d& p, const Eigen::Vector3d& e0,
+                       const Eigen::Vector3d& e1) {
+        return point_edge_distance_type_exact(p, e0, e1);
+    };
+
+    const std::array<double, 7> params { { -0.5, 0, 1.0 / 3.0, 0.5, 0.7, 1,
+                                           1.5 } };
+    const std::array<double, 3> offsets { { 0, 1e-3, 1 } };
+    const int n_random = 50;
+
+    for (int i = 0; i < n_random; i++) {
+        const Eigen::Vector3d t0 = Eigen::Vector3d::Random();
+        const Eigen::Vector3d t1 = Eigen::Vector3d::Random();
+        const Eigen::Vector3d t2 = Eigen::Vector3d::Random();
+        const Eigen::Vector3d n = (t1 - t0).cross(t2 - t0).normalized();
+
+        for (const double a : params) {
+            for (const double b : params) {
+                for (const double c : offsets) {
+                    const Eigen::Vector3d p =
+                        t0 + a * (t1 - t0) + b * (t2 - t0) + c * n;
+                    CAPTURE(i, a, b, c);
+
+                    switch (point_triangle_distance_type_exact(p, t0, t1, t2)) {
+                    case PT::P_T0:
+                        CHECK(pe(p, t0, t1) == PE::P_E0);
+                        CHECK(pe(p, t0, t2) == PE::P_E0);
+                        break;
+                    case PT::P_T1:
+                        CHECK(pe(p, t1, t2) == PE::P_E0);
+                        CHECK(pe(p, t1, t0) == PE::P_E0);
+                        break;
+                    case PT::P_T2:
+                        CHECK(pe(p, t2, t0) == PE::P_E0);
+                        CHECK(pe(p, t2, t1) == PE::P_E0);
+                        break;
+                    case PT::P_E0:
+                        CHECK(pe(p, t0, t1) == PE::P_E);
+                        CHECK(pe(p, t1, t0) == PE::P_E);
+                        break;
+                    case PT::P_E1:
+                        CHECK(pe(p, t1, t2) == PE::P_E);
+                        CHECK(pe(p, t2, t1) == PE::P_E);
+                        break;
+                    case PT::P_E2:
+                        CHECK(pe(p, t2, t0) == PE::P_E);
+                        CHECK(pe(p, t0, t2) == PE::P_E);
+                        break;
+                    default:
+                        break;
+                    }
+
+                    // Edge-edge: ea = (t0, t1), eb = (t2, p).
+                    const Eigen::Vector3d &ea0 = t0, &ea1 = t1, &eb0 = t2;
+                    const Eigen::Vector3d& eb1 = p;
+                    if (is_parallel_edge_edge(ea0, ea1, eb0, eb1)) {
+                        continue;
+                    }
+                    switch (edge_edge_distance_type_exact(ea0, ea1, eb0, eb1)) {
+                    case EE::EA0_EB0:
+                        CHECK(pe(ea0, eb0, eb1) == PE::P_E0);
+                        CHECK(pe(eb0, ea0, ea1) == PE::P_E0);
+                        break;
+                    case EE::EA0_EB1:
+                        CHECK(pe(ea0, eb0, eb1) == PE::P_E1);
+                        CHECK(pe(eb1, ea0, ea1) == PE::P_E0);
+                        break;
+                    case EE::EA1_EB0:
+                        CHECK(pe(ea1, eb0, eb1) == PE::P_E0);
+                        CHECK(pe(eb0, ea0, ea1) == PE::P_E1);
+                        break;
+                    case EE::EA1_EB1:
+                        CHECK(pe(ea1, eb0, eb1) == PE::P_E1);
+                        CHECK(pe(eb1, ea0, ea1) == PE::P_E1);
+                        break;
+                    case EE::EA_EB0:
+                        CHECK(pe(eb0, ea0, ea1) == PE::P_E);
+                        break;
+                    case EE::EA_EB1:
+                        CHECK(pe(eb1, ea0, ea1) == PE::P_E);
+                        break;
+                    case EE::EA0_EB:
+                        CHECK(pe(ea0, eb0, eb1) == PE::P_E);
+                        break;
+                    case EE::EA1_EB:
+                        CHECK(pe(ea1, eb0, eb1) == PE::P_E);
+                        break;
+                    default:
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
 
 struct RandomBarycentricCoordGenerator
     : Catch::Generators::IGenerator<Eigen::Vector3d> {
