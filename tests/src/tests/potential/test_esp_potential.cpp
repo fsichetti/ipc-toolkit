@@ -518,11 +518,9 @@ TEST_CASE(
     const auto method = make_default_broad_phase();
 
     // Load cube mesh
-    const std::string cube_path =
-        (tests::DATA_DIR / "../src/tests/potential/cube.obj").string();
     Eigen::MatrixXd V_single;
-    Eigen::MatrixXi F_single;
-    REQUIRE(igl::read_triangle_mesh(cube_path, V_single, F_single));
+    Eigen::MatrixXi E_single, F_single;
+    REQUIRE(tests::load_mesh("cube.ply", V_single, E_single, F_single));
 
     // Create two cubes: one fixed, one translated slightly
     Eigen::MatrixXd V(V_single.rows() * 2, 3);
