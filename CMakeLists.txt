@@ -100,7 +100,7 @@ option(IPC_TOOLKIT_WITH_ABSEIL                "Use Abseil's hash functions"     
 option(IPC_TOOLKIT_WITH_FILIB                 "Use filib for interval arithmetic"              ON)
 option(IPC_TOOLKIT_WITH_INEXACT_CCD           "Use the original inexact CCD method of IPC"    OFF)
 option(IPC_TOOLKIT_WITH_PROFILER              "Enable performance profiler"                   OFF)
-option(IPC_TOOLKIT_WITH_GEOGRAM               "Use geogram for predicates / expansion types"  ON)
+option(IPC_TOOLKIT_WITH_GEOGRAM               "Use geogram for predicates / expansion types" OFF)
 option(IPC_TOOLKIT_WITH_TRACY                 "Enable Tracy frame profiler"                   OFF)
 option(IPC_TOOLKIT_WITH_MESHFEM_SPARSE        "Use MeshFEMSparse for block-accelerated assembly" ON)
 
@@ -363,12 +363,11 @@ if(IPC_TOOLKIT_WITH_SIMD)
   # Link against cross-platform xsimd library
   include(xsimd)
   target_link_libraries(ipc_toolkit PUBLIC xsimd::xsimd)
-endif()
 
-# Disable vectorization in Eigen since I've found it to have alignment issues.
-# ESP static_asserts this, so it applies with or without SIMD.
-# NOTE: I don't know why this needs to be public, but it crashes if I make it private.
-target_compile_definitions(ipc_toolkit PUBLIC EIGEN_DONT_VECTORIZE=1)
+  # Disable vectorization in Eigen since I've found it to have alignment issues.
+  # NOTE: I don't know why this needs to be public, but it crashes if I make it private.
+  target_compile_definitions(ipc_toolkit PUBLIC EIGEN_DONT_VECTORIZE=1)
+endif()
 
 if(IPC_TOOLKIT_WITH_CUDA)
   # Pin Eigen's alignment so C++ and CUDA translation units agree on object

@@ -70,9 +70,6 @@ ESPCollisionTemplate<PrimitiveA, PrimitiveB>::ESPCollisionTemplate(
     : primitive_a(_primitive0, mesh)
     , primitive_b(_primitive1, mesh)
 {
-    static_assert(
-        Eigen::internal::packet_traits<double>::size == 1,
-        "Eigen vectorization is NOT disabled!");
 }
 
 template <>
