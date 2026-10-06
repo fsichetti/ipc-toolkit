@@ -43,6 +43,9 @@ public:
     /// @param mesh The collision mesh.
     /// @param X Degrees of freedom of the collision mesh (e.g., vertices or velocities).
     /// @param project_hessian_to_psd Make sure the hessian is positive semi-definite.
+    ///        With normalized weights and edge-edge terms, each face's block is
+    ///        projected as a whole, since its weight-derivative terms are
+    ///        indefinite; otherwise each stencil's block is projected.
     /// @returns The Hessian of the potential w.r.t. X. This will have a size of |X|×|X|.
     virtual Eigen::SparseMatrix<double> hessian(
         const ESPCollisions& collisions,
@@ -85,7 +88,10 @@ protected:
     /// @brief ESP parameters for collision potential
     ESPParameters params;
     /// @brief Whether to normalize the quadrature weights so they sum to 1,
-    ///        splitting near and far contributions when 0 < dbar_factor < 1.
+    ///        splitting near and far contributions when 0 < dbar_factor <= 2.
+    ///        The far part is nonzero for dbar_factor < 2 (e.g., at 1) and
+    ///        vanishes identically at 2, where the split equals the unsplit
+    ///        normalized potential.
     const bool use_near_far;
 };
 

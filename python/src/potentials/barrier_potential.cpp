@@ -264,12 +264,12 @@ void define_esp_potential(py::module& m)
 
             Parameters:
                 dhat: Activation distance of the barrier.
-                dbar_factor: Edge-edge mollifier support, as a factor of dhat.
+                dbar_factor: Near/far split parameter dbar / dhat, in [0, 2]. The far part vanishes identically at 2; the edge-edge weights use the support min(dbar, dhat); 0 disables edge-edge contact.
                 quad_order: Gauss-Lobatto edge quadrature order (2D).
                 area_weights: Whether to weight the quadrature by area.
                 integration_type: Which obstacle primitives to integrate.
             )ipc_Qu8mg5v7",
-            py::arg("dhat"), py::arg("dbar_factor") = 1.0,
+            py::arg("dhat"), py::arg("dbar_factor") = 0.2,
             py::arg("quad_order") = 1, py::arg("area_weights") = true,
             py::arg("integration_type") =
                 ESPParameters::IntegrationType::NORMAL)
@@ -287,7 +287,7 @@ void define_esp_potential(py::module& m)
 
             Parameters:
                 param: A set of parameters.
-                use_near_far: Whether to normalize the quadrature weights so they sum to 1, splitting near and far contributions when 0 < dbar_factor < 1.
+                use_near_far: Whether to normalize the quadrature weights so they sum to 1, splitting near and far contributions when 0 < dbar_factor <= 2 (the far part vanishes at 2).
             )ipc_Qu8mg5v7",
             py::arg("param"), py::arg("use_near_far") = true)
         .def(
@@ -339,7 +339,7 @@ void define_esp_potential(py::module& m)
                 collisions: The set of collisions.
                 mesh: The collision mesh.
                 vertices: Vertices of the collision mesh.
-                project_hessian_to_psd: Make sure the hessian is positive semi-definite.
+                project_hessian_to_psd: Make sure the hessian is positive semi-definite. With normalized weights and edge-edge terms, each face's block is projected as a whole.
 
             Returns:
                 The hessian of all barrier potentials (not scaled by the barrier stiffness). This will have a size of |vertices|x|vertices|.

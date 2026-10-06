@@ -100,7 +100,7 @@ option(IPC_TOOLKIT_WITH_ABSEIL                "Use Abseil's hash functions"     
 option(IPC_TOOLKIT_WITH_FILIB                 "Use filib for interval arithmetic"              ON)
 option(IPC_TOOLKIT_WITH_INEXACT_CCD           "Use the original inexact CCD method of IPC"    OFF)
 option(IPC_TOOLKIT_WITH_PROFILER              "Enable performance profiler"                   OFF)
-option(IPC_TOOLKIT_WITH_GEOGRAM               "Use geogram for predicates / expansion types" OFF)
+option(IPC_TOOLKIT_WITH_GEOGRAM               "Use geogram for predicates / expansion types"  ON)
 option(IPC_TOOLKIT_WITH_TRACY                 "Enable Tracy frame profiler"                   OFF)
 option(IPC_TOOLKIT_WITH_MESHFEM_SPARSE        "Use MeshFEMSparse for block-accelerated assembly" ON)
 

@@ -113,10 +113,10 @@ double ESPPotential::operator()(
         {
             tbb::enumerable_thread_specific<double> potential_storage(0.0);
 
-            // Disable near/far splitting for edge cases
+            // Split near and far for every dbar_factor in (0, 2]. At 0 the
+            // edge-edge terms are skipped, so the weights are constant.
             const double dbar_factor = params.dbar_factor();
-            const bool use_nf =
-                use_near_far && dbar_factor > 0 && dbar_factor < 1;
+            const bool use_nf = use_near_far && dbar_factor > 0;
             const bool skip_ee =
                 (dbar_factor == 0); // Skip EE pairs when dbar_factor == 0
 
@@ -191,8 +191,9 @@ double ESPPotential::operator()(
                                     X.row(ec).transpose(),
                                     X.row(ed).transpose(), dist_sqr);
 
-                                double mollifier = Math<double>::cubic_spline(
-                                                       dist / params.dbar)
+                                double mollifier =
+                                    Math<double>::cubic_spline(
+                                        dist / params.ee_support())
                                     * 1.5;
                                 mollifier *= edge_edge_mollifier<double>(
                                     X.row(ea).transpose(),
@@ -402,8 +403,7 @@ Eigen::VectorXd ESPPotential::gradient(
             using T = ADGrad<12>;
 
             const double dbar_factor = params.dbar_factor();
-            const bool use_nf_grad =
-                use_near_far && dbar_factor > 0 && dbar_factor < 1;
+            const bool use_nf_grad = use_near_far && dbar_factor > 0;
             const bool skip_ee_grad = (dbar_factor == 0);
 
             auto loop_body = [&](const tbb::blocked_range<index_t>& r) {
@@ -513,8 +513,8 @@ Eigen::VectorXd ESPPotential::gradient(
                                     X.row(ec).transpose(),
                                     X.row(ed).transpose(), dist_sqr.val);
 
-                                T mollifier =
-                                    Math<T>::cubic_spline(dist / params.dbar)
+                                T mollifier = Math<T>::cubic_spline(
+                                                  dist / params.ee_support())
                                     * 1.5;
                                 mollifier *= edge_edge_mollifier<T>(
                                     positionsT.row(0).transpose(),
@@ -706,7 +706,8 @@ Eigen::VectorXd ESPPotential::gradient(
                         }
                     } else if (use_near_far) {
                         // Normalized but without NearFarBarrier splitting
-                        // (dbar_factor not in (0,1))
+                        // (only reached at dbar_factor = 0, which skips the
+                        // edge-edge terms, so the weights are constant)
                         assert(total_w > 0);
                         const double avg_P = total_p / total_w;
                         for (const auto& e : ee_cache) {
@@ -816,19 +817,20 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                 }
             });
     } else if (mesh.dim() == 3) {
-        // When use_near_far is on, the per-face hessian is assembled as
+        // With normalized weights (use_near_far) and 0 < dbar_factor <= 2, the
+        // per-face hessian is assembled as
         //   Term A (sum of per-stencil H(p_i))
         // + Term B (negative weighted sum of H(mol_i))
         // + Term C (sign-indefinite cross terms ~ sym(G⊗∇Z)).
-        // PSD-projecting Terms A and B individually is not enough — Term C is
-        // never PSD on its own. To still guarantee a PSD per-face contribution
-        // (and thus a PSD global hessian), defer all per-stencil projections
-        // and project the assembled per-face block once, over the union of
-        // involved DOFs. With use_near_far = false the original
-        // local-projection path is preserved exactly.
+        // Terms B and C are indefinite, so projecting the per-stencil blocks
+        // is not enough. To still guarantee a PSD per-face contribution (and
+        // thus a PSD global hessian), defer all per-stencil projections and
+        // project the assembled per-face block once, over the union of
+        // involved DOFs. At dbar_factor = 0 the edge-edge terms are skipped,
+        // so B = C = 0 and the per-stencil projections suffice; with
+        // use_near_far = false the local-projection path is used.
         const double dbar_factor_hess = params.dbar_factor();
-        const bool use_nf_hess =
-            use_near_far && dbar_factor_hess > 0 && dbar_factor_hess < 1;
+        const bool use_nf_hess = use_near_far && dbar_factor_hess > 0;
         const bool skip_ee_hess = (dbar_factor_hess == 0);
         const bool combined_psd_projection =
             use_nf_hess && project_hessian_to_psd != PSDProjectionMethod::NONE;
@@ -953,8 +955,8 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                     X.row(ec).transpose(),
                                     X.row(ed).transpose(), dist_sqr.val);
 
-                                T mollifier =
-                                    Math<T>::cubic_spline(dist / params.dbar)
+                                T mollifier = Math<T>::cubic_spline(
+                                                  dist / params.ee_support())
                                     * 1.5;
                                 mollifier *= edge_edge_mollifier<T>(
                                     positionsT.row(0).transpose(),
@@ -1463,7 +1465,8 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                         }
                     } else if (use_near_far) {
                         // Normalized (use_near_far=true) but without
-                        // NearFarBarrier splitting
+                        // NearFarBarrier splitting (only reached at
+                        // dbar_factor = 0: no edge-edge terms, so B = C = 0)
                         assert(total_w > 0);
                         const double avg_P = total_p / total_w;
                         const double scale_C = -(w / (total_w * total_w));

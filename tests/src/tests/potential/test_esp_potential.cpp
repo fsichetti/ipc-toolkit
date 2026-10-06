@@ -19,6 +19,7 @@
 #include "ipc/esp/quadrature_potential.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 using namespace ipc;
 
@@ -608,6 +609,116 @@ TEST_CASE(
     CHECK(potential_value(2) == Catch::Approx(expected).epsilon(1e-12));
 }
 
+TEST_CASE("ESP parameters dbar_factor range", "[esp_potential]")
+{
+    CHECK_NOTHROW(ESPParameters(0.1, 0.0));
+    CHECK_NOTHROW(ESPParameters(0.1, 0.5));
+    CHECK_NOTHROW(ESPParameters(0.1, 1.0));
+    CHECK_NOTHROW(ESPParameters(0.1, 2.0));
+    CHECK_THROWS_AS(ESPParameters(0.1, -0.1), std::invalid_argument);
+    CHECK_THROWS_AS(ESPParameters(0.1, 2.5), std::invalid_argument);
+    CHECK_THROWS_AS(ESPParameters(0.1, std::nan("")), std::invalid_argument);
+}
+
+TEST_CASE(
+    "NearFarBarrier far part vanishes at alpha = 2", "[esp_potential][barrier]")
+{
+    const double dhat = 0.1;
+    const NormalizedClampedLogBarrier<> base;
+    const NearFarBarrier nf1(&base, 1.0), nf2(&base, 2.0);
+    for (int i = 1; i < 100; i++) {
+        const double d = dhat * i / 100.0;
+        CAPTURE(d);
+        CHECK(nf2.far_value(d, dhat) == 0.0);
+        CHECK(nf2.near_value(d, dhat) == base(d, dhat));
+        if (d > dhat / 2) {
+            CHECK(nf1.far_value(d, dhat) > 0.0); // a real split at alpha = 1
+        }
+    }
+}
+
+// The near/far split is used for every dbar_factor in (0, 2] and its far part
+// vanishes at 2, so the potential and its derivatives are continuous in
+// dbar_factor, including at 1, where the split used to switch off.
+TEST_CASE(
+    "ESP potential is continuous in dbar_factor",
+    "[esp_potential], [esp_potential_3d]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E, F;
+    REQUIRE(tests::load_mesh("two-cubes-close.ply", V, E, F));
+    const CollisionMesh mesh(V, E, F);
+    const double dhat = 0.15;
+    const double alpha = GENERATE(1.0, 2.0);
+    const double eps = 1e-7;
+    CAPTURE(alpha);
+
+    struct Eval {
+        double e;
+        Eigen::VectorXd g;
+        Eigen::MatrixXd h;
+    };
+    const auto eval = [&](const double dbar_factor) {
+        const ESPParameters params(dhat, dbar_factor, 0);
+        ESPCollisions collisions;
+        collisions.build(mesh, V, params);
+        const ESPPotential potential(params);
+        return Eval { potential(collisions, mesh, V),
+                      potential.gradient(collisions, mesh, V),
+                      Eigen::MatrixXd(potential.hessian(collisions, mesh, V)) };
+    };
+    const auto check_close = [](const Eval& a, const Eval& b) {
+        CHECK(a.e == Catch::Approx(b.e).epsilon(1e-5));
+        CHECK((a.g - b.g).norm() <= 1e-5 * b.g.norm());
+        CHECK((a.h - b.h).norm() <= 1e-5 * b.h.norm());
+    };
+
+    const Eval at = eval(alpha);
+    REQUIRE(at.e > 0);
+    check_close(eval(alpha - eps), at);
+    if (alpha < 2) {
+        check_close(eval(alpha + eps), at);
+    }
+}
+
+// An edge-edge quadrature point whose collision set cancels to empty still has
+// a positive weight in its faces' weighted average. Here edges e0 (on T0) and
+// e1 (on T1) form an EA_EB pair whose edge-point sets cancel to empty; vertex u
+// gives T0 a nonzero vertex potential. Moving vertex v across dhat of the
+// closest point on e0 makes that set non-empty; the potential must not jump.
+TEST_CASE(
+    "ESP edge-edge weights count when their collisions cancel",
+    "[esp_potential], [esp_potential_3d]")
+{
+    const double dhat = 0.5, d0 = 0.2;
+    Eigen::MatrixXd V(8, 3);
+    V << -1, 0, 0, 1, 0, 0, 0, -1, 0,      // T0, in z = 0
+        0, -1, d0, 0, 1, d0, 0, 0, d0 + 1, // T1, in x = 0
+        1, 0, -0.2,                        // u
+        0, 0, -dhat;                       // v
+    Eigen::MatrixXi F(2, 3);
+    F << 0, 1, 2, 3, 4, 5;
+    Eigen::MatrixXi E;
+    igl::edges(F, E);
+    const CollisionMesh mesh(V, E, F);
+
+    const ESPParameters params(dhat, 1.0, 0);
+    const ESPPotential potential(params);
+    const auto energy_at = [&](const double z) {
+        V(7, 2) = -z;
+        ESPCollisions collisions;
+        collisions.build(mesh, V, params);
+        return potential(collisions, mesh, V);
+    };
+
+    const double eta = 1e-6;
+    const double e_out = energy_at(dhat + eta);
+    const double e_in = energy_at(dhat - eta);
+    CAPTURE(e_out, e_in);
+    REQUIRE(e_out != 0);
+    CHECK(e_in == Catch::Approx(e_out).epsilon(1e-6));
+}
+
 TEST_CASE("ESP potential codim", "[esp_potential], [esp_potential_2d]")
 {
     const auto method = make_default_broad_phase();
@@ -964,13 +1075,22 @@ TEST_CASE(
     }
 }
 
-// Verify that with normalize_weights = true, the global hessian is PSD whenever
-// project_hessian_to_psd is set. The non-normalized branch uses local PSD
-// projection which trivially yields a PSD assembly.
+// Verify that the global hessian is PSD whenever project_hessian_to_psd is set.
+// With normalized weights (the second ESPPotential argument, use_near_far) and
+// 0 < dbar_factor <= 2, the edge-edge weights add indefinite terms, so each
+// face's block is projected as a whole; dbar_factor = 1 is a real near/far
+// split. The non-normalized branch projects each stencil's block. two-cubes-
+// close has many edge-edge pairs and vertex potentials; the wrapped sphere has
+// few, which hid a gap at dbar_factor = 1.
 TEST_CASE(
     "Convergent Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
 {
-    auto [V, E, F, mesh] = load_wrapped_sphere();
+    const std::string mesh_name =
+        GENERATE(as<std::string>(), "wrapped_sphere", "two-cubes-close");
+    auto [V, E, F, mesh] = mesh_name == "wrapped_sphere"
+        ? load_wrapped_sphere()
+        : load_triangle_mesh(
+              (tests::DATA_DIR / "two-cubes-close.ply").string());
 
     const double dhat = 0.15;
     const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
@@ -999,9 +1119,10 @@ TEST_CASE(
     const double tol = std::max(1e-10, 1e-10 * std::abs(lambda_max));
 
     INFO(
-        "normalize_weights="
-        << normalize_weights << " method=" << static_cast<int>(psd_method)
-        << " lambda_min=" << lambda_min << " lambda_max=" << lambda_max);
+        "mesh=" << mesh_name << " dbar_factor=" << dbar_factor
+                << " normalize_weights=" << normalize_weights << " method="
+                << static_cast<int>(psd_method) << " lambda_min=" << lambda_min
+                << " lambda_max=" << lambda_max);
     REQUIRE(lambda_min >= -tol);
 }
 
@@ -1094,11 +1215,16 @@ TEST_CASE("NearFarBarrier decomposition", "[esp_potential][barrier]")
     }
 }
 
-// Same check for the 3D face-quadrature variant: ESP quadrature points
-// inside each face must also yield a PSD assembly under combined projection.
+// Same check over quad_order. Note quad_order only sets the 2D rule; 3D face
+// quadrature needs params.face_quad_rule, which this test does not set.
 TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
 {
-    auto [V, E, F, mesh] = load_wrapped_sphere();
+    const std::string mesh_name =
+        GENERATE(as<std::string>(), "wrapped_sphere", "two-cubes-close");
+    auto [V, E, F, mesh] = mesh_name == "wrapped_sphere"
+        ? load_wrapped_sphere()
+        : load_triangle_mesh(
+              (tests::DATA_DIR / "two-cubes-close.ply").string());
 
     const double dhat = 0.15;
     const int quad_order = GENERATE(0, 3, 6);
@@ -1127,9 +1253,10 @@ TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
     const double tol = std::max(1e-10, 1e-10 * std::abs(lambda_max));
 
     INFO(
-        "normalize_weights="
-        << normalize_weights << " quad_order=" << quad_order
-        << " method=" << static_cast<int>(psd_method)
-        << " lambda_min=" << lambda_min << " lambda_max=" << lambda_max);
+        "mesh=" << mesh_name << " dbar_factor=" << dbar_factor
+                << " normalize_weights=" << normalize_weights << " quad_order="
+                << quad_order << " method=" << static_cast<int>(psd_method)
+                << " lambda_min=" << lambda_min
+                << " lambda_max=" << lambda_max);
     REQUIRE(lambda_min >= -tol);
 }

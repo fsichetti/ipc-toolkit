@@ -3,11 +3,15 @@
 #include <ipc/barrier/barrier.hpp>
 #include <ipc/utils/logger.hpp>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <stdexcept>
+#include <string>
 
 namespace ipc {
 
@@ -26,9 +30,15 @@ struct ESPParameters {
         NO_OBST ///< Skip obstacle sources entirely, may miss collisions!
     };
 
+    /// @param dbar_factor_value Near/far split parameter dbar / dhat, in
+    ///        [0, 2]. The far part of the barrier vanishes identically at 2,
+    ///        so the split tends continuously to the unsplit potential; the
+    ///        edge-edge weights use the support min(dbar, dhat) (ee_support).
+    ///        0 disables edge-edge contact.
+    /// @throws std::invalid_argument if dbar_factor_value is not in [0, 2].
     ESPParameters(
         const double _dhat,
-        const double dbar_factor_value = 1.0,
+        const double dbar_factor_value = 0.2,
         const int _quad_order = 1,
         bool _area_weights = true,
         const IntegrationType _integration_type = IntegrationType::NORMAL)
@@ -39,6 +49,15 @@ struct ESPParameters {
         , area_weights(_area_weights)
         , integration_type(_integration_type)
     {
+        if (std::isnan(dbar_factor_value) || dbar_factor_value < 0
+            || dbar_factor_value > 2) {
+            throw std::invalid_argument(
+                "dbar_factor " + std::to_string(dbar_factor_value)
+                + " is not in [0, 2].");
+        } else if (dbar_factor_value == 0) {
+            logger().warn("dbar_factor = 0 disables edge-edge contact.");
+        }
+
         if (quad_order > 14) {
             throw std::invalid_argument(
                 "Quadrature order " + std::to_string(quad_order)
@@ -65,6 +84,10 @@ struct ESPParameters {
     const IntegrationType integration_type;
 
     double dbar_factor() const { return dbar_factor_value; }
+
+    /// @brief Support of the edge-edge (edge point) weights: min(dbar, dhat).
+    /// Edge-edge pairs farther apart than this get no quadrature point.
+    double ee_support() const { return std::min(dbar, dhat); }
 
     const FaceQuadRule& get_quad_rule() const { return face_quad_rule; }
 

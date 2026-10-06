@@ -440,7 +440,7 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             vertices.row(ea), vertices.row(eb), vertices.row(ec),
             vertices.row(ed), dtype);
 
-        if (dist_sq >= params.dbar * params.dbar) {
+        if (dist_sq >= params.ee_support() * params.ee_support()) {
             continue;
         }
 
@@ -465,7 +465,11 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             auto dict =
                 point_potential->build_collisions_at_edge_edge_closest_point(
                     vertices, ei, ej, dtype, n);
-            if (dict && dict->size() > 0) {
+            // Keep the dict even if its pairs cancel to empty: its mollifier
+            // weight still counts in the face's weighted average, so dropping
+            // it would make the potential jump when the dict changes between
+            // empty and non-empty.
+            if (dict) {
                 edge_edge_collisions.push_back(std::move(dict));
             }
             num_collision_pairs += n;
@@ -479,7 +483,7 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             auto dict =
                 point_potential->build_collisions_at_edge_edge_closest_point(
                     vertices, ej, ei, dtype, n);
-            if (dict && dict->size() > 0) {
+            if (dict) { // kept even if empty, see above
                 edge_edge_collisions.push_back(std::move(dict));
             }
             num_collision_pairs += n;

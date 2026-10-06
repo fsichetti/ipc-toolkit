@@ -293,7 +293,8 @@ void TangentialCollisions::build(
                     vertices.row(e10).transpose(),
                     vertices.row(e11).transpose(), dist_sqr);
                 double mol =
-                    Math<double>::cubic_spline(dist / params.dbar) * 1.5;
+                    Math<double>::cubic_spline(dist / params.ee_support())
+                    * 1.5;
                 mol *= edge_edge_mollifier<double>(
                     vertices.row(e00).transpose(),
                     vertices.row(e01).transpose(),
@@ -453,7 +454,7 @@ void TangentialCollisions::build(
                 vertices.row(e10).transpose(), vertices.row(e11).transpose(),
                 dist_sqr_ee);
             double mollifier =
-                Math<double>::cubic_spline(dist_ee / params.dbar) * 1.5;
+                Math<double>::cubic_spline(dist_ee / params.ee_support()) * 1.5;
             mollifier *= edge_edge_mollifier<double>(
                 vertices.row(e00).transpose(), vertices.row(e01).transpose(),
                 vertices.row(e10).transpose(), vertices.row(e11).transpose(),
