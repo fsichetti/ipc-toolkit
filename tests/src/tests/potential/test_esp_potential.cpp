@@ -740,7 +740,15 @@ TEST_CASE(
     ESPParameters params(dhat, 1., quadrature_order);
     CAPTURE(quadrature_order);
 
-    auto run_checks = [&]() {
+    // The Hessian is checked against an FD of the analytic gradient on the
+    // set built at V: the potential is only C1 across a distance-type switch
+    // (point-line vs. point-point distance), so rebuilding at each step is not
+    // an option. The fixed set is valid as long as no stored Vertex2-Edge2P1
+    // pair (P_E) is within the FD step of a switch, since that collision
+    // asserts P_E. Exact ties are classified to endpoint types and are
+    // harmless, but rounding can leave P_E pairs ~1e-17 from a switch; as in
+    // the GCP tests, such configurations get the gradient check only.
+    auto run_checks = [&](const bool check_hessian) {
         CollisionMesh mesh = make_2d_collision_mesh(V, E);
 
         ESPCollisions collisions;
@@ -755,18 +763,57 @@ TEST_CASE(
 
         Eigen::VectorXd grad = potential.gradient(collisions, mesh, V);
         REQUIRE(grad.squaredNorm() > 1e-8);
-        Eigen::VectorXd fgrad;
-        fd::finite_gradient(
-            fd::flatten(V),
-            [&](const Eigen::VectorXd& x) {
-                return potential(collisions, mesh, fd::unflatten(x, V.cols()));
-            },
-            fgrad, fd::AccuracyOrder::SECOND, 1e-8);
+
+        // Rebuild the collisions at each perturbed configuration: a
+        // collision's type encodes its distance type (e.g., Vertex2-Edge2P1
+        // only at P_E) and asserts it, so the set built at V cannot be
+        // evaluated across a switch, which the energy FD may cross.
+        const auto energy_at = [&](const Eigen::VectorXd& x) {
+            const Eigen::MatrixXd V_ = fd::unflatten(x, V.cols());
+            ESPCollisions collisions_;
+            collisions_.build(mesh, V_, params, method.get());
+            return potential(collisions_, mesh, V_);
+        };
+
         CAPTURE(grad.norm());
-        CAPTURE(fgrad.norm());
-        CHECK(
-            (grad - fgrad).norm() < std::max(
-                1e-4 * std::max({ grad.norm(), fgrad.norm(), 1e-8 }), 1e-9));
+        if (V.size() <= 32) {
+            Eigen::VectorXd fgrad;
+            fd::finite_gradient(
+                fd::flatten(V), energy_at, fgrad, fd::AccuracyOrder::SECOND,
+                1e-8);
+            CAPTURE(fgrad.norm());
+            CHECK(
+                (grad - fgrad).norm() < std::max(
+                    1e-4 * std::max({ grad.norm(), fgrad.norm(), 1e-8 }),
+                    1e-9));
+        } else {
+            // A full finite difference with a rebuild per evaluation is too
+            // expensive on mesh_1 (880 DOFs), verify directional derivative
+            // only
+            Eigen::VectorXd test_dir(V.size());
+            for (int i = 0; i < test_dir.size(); i++) {
+                test_dir(i) = i;
+            }
+            test_dir.normalize();
+
+            Eigen::VectorXd fg;
+            fd::finite_gradient(
+                Eigen::VectorXd::Zero(1),
+                [&](const Eigen::VectorXd& y) {
+                    return energy_at(fd::flatten(V) + test_dir * y(0));
+                },
+                fg, fd::AccuracyOrder::SECOND, 1e-8);
+            const double g_dir = grad.dot(test_dir);
+            CAPTURE(fg(0), g_dir);
+            CHECK(
+                std::abs(fg(0) - g_dir) < std::max(
+                    1e-4 * std::max({ std::abs(fg(0)), std::abs(g_dir), 1e-8 }),
+                    1e-9));
+        }
+
+        if (!check_hessian) {
+            return;
+        }
 
         Eigen::MatrixXd hess = potential.hessian(collisions, mesh, V);
         REQUIRE(hess.squaredNorm() > 1e-3);
@@ -795,7 +842,7 @@ TEST_CASE(
         V << -1., 1., -1., 0., 0., 0., P0x, .5 + BA, 0., 1., 1., 0., 1., 1.,
             .02, P1y;
         E << 0, 1, 1, 2, 2, 3, 3, 4, 4, 0, 5, 6, 6, 7, 7, 5;
-        run_checks();
+        run_checks(true);
     }
 
     SECTION("squares")
@@ -808,14 +855,16 @@ TEST_CASE(
             INFO("horizontal_squares");
             V << -1., 1. + BA, -1., 0. + BA, -.1, 0. + BA, -.1, 1. + BA, .1, 1.,
                 .1, 0., 1., 0., 1., 1.;
-            run_checks();
+            // Rounding leaves P_E pairs ~1e-17 from a switch at order 14.
+            run_checks(false);
         }
         SECTION("vertical_squares")
         {
             INFO("vertical_squares");
             V << 0. + BA, -1., 1. + BA, -1., 1. + BA, -.1, 0. + BA, -.1, 0., .1,
                 1., .1, 1., 1., 0., 1.;
-            run_checks();
+            // Rounding leaves P_E pairs ~1e-17 from a switch at order 14.
+            run_checks(false);
         }
     }
 
@@ -828,7 +877,8 @@ TEST_CASE(
         success = success && igl::readCSV(mesh_name + "-e.csv", E);
         REQUIRE(success);
         V.col(0) += Eigen::VectorXd::Random(V.rows()) * BA;
-        run_checks();
+        // The closest P_E pair is ~1e-11 from a switch, above h = 1e-12.
+        run_checks(true);
     }
 
     SECTION("mesh_2")
@@ -840,7 +890,8 @@ TEST_CASE(
         success = success && igl::readCSV(mesh_name + "-e.csv", E);
         REQUIRE(success);
         V.col(0) += Eigen::VectorXd::Random(V.rows()) * BA;
-        run_checks();
+        // Rounding leaves P_E pairs ~1e-17 from a switch at orders 7 and 14.
+        run_checks(false);
     }
 }
 
