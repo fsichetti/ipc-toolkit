@@ -12,6 +12,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace ipc {
 
@@ -62,12 +63,6 @@ struct ESPParameters {
             throw std::invalid_argument(
                 "Quadrature order " + std::to_string(quad_order)
                 + ">14 is too large.");
-        } else if (quad_order == 6 || quad_order == 8) {
-            logger().error(
-                "Quadrature orders 6 and 8 has negative vertex weights.");
-        } else if (quad_order >= 10 && quad_order <= 12) {
-            logger().warn(
-                "Quadrature orders 10-12 are not implemented, and instead use order 13.");
         }
     }
 
@@ -89,11 +84,35 @@ struct ESPParameters {
     /// Edge-edge pairs farther apart than this get no quadrature point.
     double ee_support() const { return std::min(dbar, dhat); }
 
-    const FaceQuadRule& get_quad_rule() const { return face_quad_rule; }
-
     /// Face quadrature rule (3D). Empty (default) integrates over the face
     /// vertices instead; quad_order does not affect 3D.
-    FaceQuadRule face_quad_rule;
+    const FaceQuadRule& get_quad_rule() const { return m_face_quad_rule; }
+
+    /// @brief Set the face quadrature rule (3D).
+    /// @param rule Quadrature points in barycentric coordinates with their
+    ///        weights. Empty integrates over the face vertices instead.
+    /// @throws std::invalid_argument if a weight is negative or not finite, or
+    ///         if the weights sum to zero. A negative weight makes the barrier
+    ///         energy unbounded below as its point approaches contact.
+    void set_quad_rule(FaceQuadRule rule)
+    {
+        double sum = 0;
+        for (size_t i = 0; i < rule.size(); i++) {
+            const double weight = rule[i].weight;
+            if (!std::isfinite(weight) || weight < 0) {
+                throw std::invalid_argument(
+                    fmt::format(
+                        "Face quadrature point {} has negative or non-finite "
+                        "weight {}.",
+                        i, weight));
+            }
+            sum += weight;
+        }
+        if (!rule.empty() && sum == 0) {
+            throw std::invalid_argument("Face quadrature weights sum to zero.");
+        }
+        m_face_quad_rule = std::move(rule);
+    }
 
     /// Record a distance passed to the barrier; tracks the running minimum
     /// across all threads. Copies of this struct share the same tracker
@@ -119,6 +138,8 @@ struct ESPParameters {
     }
 
 private:
+    FaceQuadRule m_face_quad_rule;
+
     std::shared_ptr<std::atomic<double>> m_min_dist_seen =
         std::make_shared<std::atomic<double>>(
             std::numeric_limits<double>::infinity());

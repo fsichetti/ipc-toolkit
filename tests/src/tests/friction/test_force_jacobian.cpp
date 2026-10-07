@@ -850,13 +850,13 @@ TEST_CASE("ESP friction force jacobian 3D", "[friction-esp][force-jacobian]")
     const double epsv_times_h = 1.;
     const double normal_stiffness = 1.;
     const bool normalize_weights = GENERATE(true, false);
-    // quad_order=0 uses vertex-only collisions (no face_quad_rule needed).
-    // quad_order=1 with face_quad_rule set uses face quadrature.
+    // quad_order=0 uses vertex-only collisions (no face quadrature rule).
+    // quad_order=1 with a face quadrature rule set uses face quadrature.
     const int quad_order = GENERATE(0, 1);
     ESPParameters params(dhat, 1., quad_order);
     if (quad_order > 0) {
-        params.face_quad_rule = GENERATE_COPY(
-            make_vertex_quad_rule(), make_vertex_plus_centroid_quad_rule());
+        params.set_quad_rule(GENERATE_COPY(
+            make_vertex_quad_rule(), make_vertex_plus_centroid_quad_rule()));
     }
 
     const ESPFrictionSceneData3D scene =

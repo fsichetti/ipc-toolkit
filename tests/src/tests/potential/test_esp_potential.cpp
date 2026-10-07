@@ -19,6 +19,7 @@
 #include "ipc/esp/quadrature_potential.hpp"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 using namespace ipc;
@@ -620,6 +621,55 @@ TEST_CASE("ESP parameters dbar_factor range", "[esp_potential]")
     CHECK_THROWS_AS(ESPParameters(0.1, std::nan("")), std::invalid_argument);
 }
 
+TEST_CASE("ESP face quadrature rule validation", "[esp_potential]")
+{
+    ESPParameters params(0.1);
+    CHECK(params.get_quad_rule().empty());
+
+    const FaceQuadRule centroid = { { { { 1. / 3, 1. / 3, 1. / 3 } }, 1.0 } };
+    CHECK_NOTHROW(params.set_quad_rule(centroid));
+    REQUIRE(params.get_quad_rule().size() == 1);
+
+    // A zero weight is allowed as long as the weights sum to a positive value.
+    CHECK_NOTHROW(params.set_quad_rule(
+        {
+            { { { 1., 0., 0. } }, 0.5 },
+            { { { 0., 1., 0. } }, 0.5 },
+            { { { 0., 0., 1. } }, 0.0 },
+        }));
+    CHECK(params.get_quad_rule().size() == 3);
+
+    // Degree-3 rule with a negative centroid weight (listed last, so the check
+    // must reach it): its barrier term would be unbounded below.
+    const FaceQuadRule negative = {
+        { { { 0.6, 0.2, 0.2 } }, 25. / 48 },
+        { { { 0.2, 0.6, 0.2 } }, 25. / 48 },
+        { { { 0.2, 0.2, 0.6 } }, 25. / 48 },
+        { { { 1. / 3, 1. / 3, 1. / 3 } }, -27. / 48 },
+    };
+    CHECK_THROWS_AS(params.set_quad_rule(negative), std::invalid_argument);
+    CHECK(params.get_quad_rule().size() == 3); // unchanged on failure
+
+    CHECK_THROWS_AS(
+        params.set_quad_rule({ { { { 1. / 3, 1. / 3, 1. / 3 } }, 0.0 } }),
+        std::invalid_argument);
+    for (const double bad :
+         { std::nan(""), std::numeric_limits<double>::infinity() }) {
+        CAPTURE(bad);
+        CHECK_THROWS_AS(
+            params.set_quad_rule(
+                {
+                    { { { 1., 0., 0. } }, 0.5 },
+                    { { { 0., 1., 0. } }, bad },
+                }),
+            std::invalid_argument);
+    }
+    CHECK(params.get_quad_rule().size() == 3); // unchanged on failure
+
+    CHECK_NOTHROW(params.set_quad_rule({})); // back to vertex integration
+    CHECK(params.get_quad_rule().empty());
+}
+
 TEST_CASE(
     "NearFarBarrier far part vanishes at alpha = 2", "[esp_potential][barrier]")
 {
@@ -1019,8 +1069,9 @@ TEST_CASE(
     CollisionMesh& mesh = data.mesh;
 
     const double dhat = 0.15;
-    const int quad_order = GENERATE(
-        0, 3, 6); // Using fekete rules, orders 1-2-3 and 4-5-6 are the same
+    // quad_order only sets the 2D rule; this test does not set a 3D face
+    // quadrature rule (params.set_quad_rule()).
+    const int quad_order = GENERATE(0, 3, 6);
     ESPParameters params(dhat, 1., quad_order);
 
     const bool normalize_weights = GENERATE(true, false);
@@ -1216,7 +1267,7 @@ TEST_CASE("NearFarBarrier decomposition", "[esp_potential][barrier]")
 }
 
 // Same check over quad_order. Note quad_order only sets the 2D rule; 3D face
-// quadrature needs params.face_quad_rule, which this test does not set.
+// quadrature needs params.set_quad_rule(), which this test does not call.
 TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
 {
     const std::string mesh_name =
