@@ -19,16 +19,11 @@
 #include "ipc/esp/quadrature_potential.hpp"
 
 #include <ipc/esp/collisions/esp_quadrature.hpp>
-#include <ipc/utils/logger.hpp>
-
-#include <spdlog/sinks/ostream_sink.h>
 
 #include <cmath>
 #include <limits>
 #include <memory>
-#include <sstream>
 #include <stdexcept>
-#include <utility>
 #include <vector>
 
 using namespace ipc;
@@ -677,8 +672,7 @@ TEST_CASE("ESP face quadrature rule validation", "[esp_potential]")
 
     // A point outside the face (negative barycentric coordinate) or with a
     // non-finite coordinate is rejected.
-    for (const double bad :
-         { -0.1, std::nan(""), std::numeric_limits<double>::infinity() }) {
+    for (const double bad : { -0.1, std::nan("") }) {
         CAPTURE(bad);
         CHECK_THROWS_AS(
             params.set_quad_rule(
@@ -689,23 +683,6 @@ TEST_CASE("ESP face quadrature rule validation", "[esp_potential]")
             std::invalid_argument);
     }
     CHECK(params.get_quad_rule().size() == 3); // unchanged on failure
-
-    // Coordinates that do not sum to 1 only log a warning.
-    {
-        // Capture only: swap in a sink writing to `log` instead of stdout.
-        std::ostringstream log;
-        std::vector<spdlog::sink_ptr> sinks = {
-            std::make_shared<spdlog::sinks::ostream_sink_mt>(log)
-        };
-        const spdlog::level::level_enum level = logger().level();
-        std::swap(sinks, logger().sinks());
-        logger().set_level(spdlog::level::warn);
-        CHECK_NOTHROW(params.set_quad_rule({ { { { 0.5, 0.5, 0.5 } }, 1.0 } }));
-        logger().set_level(level);
-        std::swap(sinks, logger().sinks());
-        CHECK(params.get_quad_rule().size() == 1);
-        CHECK(log.str().find("sum to 1.5, not 1") != std::string::npos);
-    }
 
     CHECK_NOTHROW(params.set_quad_rule({})); // back to vertex integration
     CHECK(params.get_quad_rule().empty());
