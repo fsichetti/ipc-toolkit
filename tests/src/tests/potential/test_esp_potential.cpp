@@ -28,6 +28,8 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 using namespace ipc;
 
@@ -682,7 +684,7 @@ TEST_CASE("ESP face quadrature rule validation", "[esp_potential]")
             params.set_quad_rule(
                 {
                     { { { 1., 0., 0. } }, 0.5 },
-                    { { { 0.5, 0.5 - bad, bad } }, 0.5 },
+                    { { { 0.5, 0.5, bad } }, 0.5 }, // the only bad coordinate
                 }),
             std::invalid_argument);
     }
@@ -690,14 +692,17 @@ TEST_CASE("ESP face quadrature rule validation", "[esp_potential]")
 
     // Coordinates that do not sum to 1 only log a warning.
     {
+        // Capture only: swap in a sink writing to `log` instead of stdout.
         std::ostringstream log;
-        const auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(log);
+        std::vector<spdlog::sink_ptr> sinks = {
+            std::make_shared<spdlog::sinks::ostream_sink_mt>(log)
+        };
         const spdlog::level::level_enum level = logger().level();
-        logger().sinks().push_back(sink);
+        std::swap(sinks, logger().sinks());
         logger().set_level(spdlog::level::warn);
         CHECK_NOTHROW(params.set_quad_rule({ { { { 0.5, 0.5, 0.5 } }, 1.0 } }));
         logger().set_level(level);
-        logger().sinks().pop_back();
+        std::swap(sinks, logger().sinks());
         CHECK(params.get_quad_rule().size() == 1);
         CHECK(log.str().find("sum to 1.5, not 1") != std::string::npos);
     }
