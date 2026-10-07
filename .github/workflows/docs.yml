@@ -10,6 +10,11 @@ on:
 jobs:
   Docs:
     runs-on: ubuntu-latest
+    # The deploy step pushes the built site to the gh-pages branch, which needs
+    # write access. We scope it to this job so the repo default can stay
+    # read-only.
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
