@@ -18,8 +18,15 @@
 
 #include "ipc/esp/quadrature_potential.hpp"
 
+#include <ipc/esp/collisions/esp_quadrature.hpp>
+#include <ipc/utils/logger.hpp>
+
+#include <spdlog/sinks/ostream_sink.h>
+
 #include <cmath>
 #include <limits>
+#include <memory>
+#include <sstream>
 #include <stdexcept>
 
 using namespace ipc;
@@ -666,8 +673,57 @@ TEST_CASE("ESP face quadrature rule validation", "[esp_potential]")
     }
     CHECK(params.get_quad_rule().size() == 3); // unchanged on failure
 
+    // A point outside the face (negative barycentric coordinate) or with a
+    // non-finite coordinate is rejected.
+    for (const double bad :
+         { -0.1, std::nan(""), std::numeric_limits<double>::infinity() }) {
+        CAPTURE(bad);
+        CHECK_THROWS_AS(
+            params.set_quad_rule(
+                {
+                    { { { 1., 0., 0. } }, 0.5 },
+                    { { { 0.5, 0.5 - bad, bad } }, 0.5 },
+                }),
+            std::invalid_argument);
+    }
+    CHECK(params.get_quad_rule().size() == 3); // unchanged on failure
+
+    // Coordinates that do not sum to 1 only log a warning.
+    {
+        std::ostringstream log;
+        const auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(log);
+        const spdlog::level::level_enum level = logger().level();
+        logger().sinks().push_back(sink);
+        logger().set_level(spdlog::level::warn);
+        CHECK_NOTHROW(params.set_quad_rule({ { { { 0.5, 0.5, 0.5 } }, 1.0 } }));
+        logger().set_level(level);
+        logger().sinks().pop_back();
+        CHECK(params.get_quad_rule().size() == 1);
+        CHECK(log.str().find("sum to 1.5, not 1") != std::string::npos);
+    }
+
     CHECK_NOTHROW(params.set_quad_rule({})); // back to vertex integration
     CHECK(params.get_quad_rule().empty());
+}
+
+TEST_CASE("ESP 2D Gauss-Lobatto weights are positive", "[esp_potential]")
+{
+    // quad_order n selects the (n + 1)-point Gauss-Lobatto rule, tabulated up
+    // to 19 points and computed beyond, so ESPParameters accepts any order.
+    for (int order = 1; order <= 25; order++) {
+        CAPTURE(order);
+        CHECK_NOTHROW(ESPParameters(0.1, 0.2, order));
+        const GaussLobatto::Rule& rule = GaussLobatto::get_rule(order);
+        REQUIRE(rule.size() == static_cast<size_t>(order + 1));
+        double sum = 0;
+        for (const EdgeQuadPoint& qp : rule) {
+            CHECK(qp.weight > 0);
+            CHECK(qp.xi >= 0);
+            CHECK(qp.xi <= 1);
+            sum += qp.weight;
+        }
+        CHECK(sum == Catch::Approx(1.0).epsilon(1e-12));
+    }
 }
 
 TEST_CASE(

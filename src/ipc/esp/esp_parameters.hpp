@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ipc {
 
@@ -58,12 +59,6 @@ struct ESPParameters {
         } else if (dbar_factor_value == 0) {
             logger().warn("dbar_factor = 0 disables edge-edge contact.");
         }
-
-        if (quad_order > 14) {
-            throw std::invalid_argument(
-                "Quadrature order " + std::to_string(quad_order)
-                + ">14 is too large.");
-        }
     }
 
     const double dhat;
@@ -73,7 +68,8 @@ struct ESPParameters {
     /// Barrier function used in 3D collision evaluation.
     std::shared_ptr<Barrier> barrier =
         std::make_shared<NormalizedClampedLogBarrier<>>();
-    /// Gauss-Lobatto edge quadrature order (2D).
+    /// Gauss-Lobatto edge quadrature order (2D): order n uses n + 1 points and
+    /// must be at least 1 in 2D. Unused in 3D.
     const int quad_order;
     bool area_weights;
     const IntegrationType integration_type;
@@ -91,12 +87,17 @@ struct ESPParameters {
     /// @brief Set the face quadrature rule (3D).
     /// @param rule Quadrature points in barycentric coordinates with their
     ///        weights. Empty integrates over the face vertices instead.
-    /// @throws std::invalid_argument if a weight is negative or not finite, or
-    ///         if the weights sum to zero. A negative weight makes the barrier
-    ///         energy unbounded below as its point approaches contact.
+    /// @throws std::invalid_argument if a weight is negative or not finite, if
+    ///         the weights sum to zero, or if a barycentric coordinate is
+    ///         negative (point outside the face) or not finite. A negative
+    ///         weight makes the barrier energy unbounded below as its point
+    ///         approaches contact.
+    /// @note Logs a warning for each point whose barycentric coordinates do
+    ///       not sum to 1 (within 1e-10).
     void set_quad_rule(FaceQuadRule rule)
     {
-        double sum = 0;
+        double weight_sum = 0;
+        std::vector<size_t> not_affine; // points whose coordinates sum != 1
         for (size_t i = 0; i < rule.size(); i++) {
             const double weight = rule[i].weight;
             if (!std::isfinite(weight) || weight < 0) {
@@ -106,10 +107,32 @@ struct ESPParameters {
                         "weight {}.",
                         i, weight));
             }
-            sum += weight;
+            weight_sum += weight;
+
+            double lambda_sum = 0;
+            for (const double lambda : rule[i].lambda) {
+                if (!std::isfinite(lambda) || lambda < 0) {
+                    throw std::invalid_argument(
+                        fmt::format(
+                            "Face quadrature point {} has negative or "
+                            "non-finite barycentric coordinate {}.",
+                            i, lambda));
+                }
+                lambda_sum += lambda;
+            }
+            if (std::abs(lambda_sum - 1) > 1e-10) {
+                not_affine.push_back(i);
+            }
         }
-        if (!rule.empty() && sum == 0) {
+        if (!rule.empty() && weight_sum == 0) {
             throw std::invalid_argument("Face quadrature weights sum to zero.");
+        }
+        for (const size_t i : not_affine) {
+            const auto& l = rule[i].lambda;
+            logger().warn(
+                "Barycentric coordinates of face quadrature point {} sum to "
+                "{}, not 1.",
+                i, l[0] + l[1] + l[2]);
         }
         m_face_quad_rule = std::move(rule);
     }
