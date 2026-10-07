@@ -103,7 +103,7 @@ void define_esp_collisions(py::module_& m)
             "build",
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
-                const ESPParameters, BroadPhase*>(&ESPCollisions::build),
+                const ESPParameters&, BroadPhase*>(&ESPCollisions::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of collisions used to compute the potential.
 
@@ -119,14 +119,15 @@ void define_esp_collisions(py::module_& m)
             "compute_minimum_distance",
             &ESPCollisions::compute_minimum_distance,
             R"ipc_Qu8mg5v7(
-            Computes the minimum distance between any non-adjacent elements.
+            Computes the minimum squared distance over the collision candidates
+            found by build().
 
             Parameters:
                 mesh: The collision mesh.
                 vertices: Vertices of the collision mesh.
 
             Returns:
-                The minimum distance between any non-adjacent elements.
+                The minimum squared distance, or inf if there are no candidates.
             )ipc_Qu8mg5v7",
             py::arg("mesh"), py::arg("vertices"))
         .def("__len__", &ESPCollisions::size, "Get the number of collisions.")

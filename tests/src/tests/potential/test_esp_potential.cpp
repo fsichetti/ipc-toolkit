@@ -20,10 +20,12 @@
 
 #include <ipc/esp/collisions/esp_quadrature.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 using namespace ipc;
@@ -50,6 +52,73 @@ TriMeshData load_wrapped_sphere()
     return load_triangle_mesh(
         (tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj")
             .string());
+}
+
+/// Smallest and largest eigenvalues of a symmetric sparse matrix. Only the
+/// rows and columns with a nonzero entry enter the dense solve: every other
+/// one contributes an exact zero eigenvalue, so the result is unchanged and
+/// the solve is much smaller when few DOFs are in contact.
+std::pair<double, double> eigenvalue_range(const Eigen::SparseMatrix<double>& H)
+{
+    std::vector<int> local(H.rows(), -1);
+    int n_active = 0;
+    for (int k = 0; k < H.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(H, k); it; ++it) {
+            if (it.value() != 0) {
+                for (const auto i : { it.row(), it.col() }) {
+                    if (local[i] < 0) {
+                        local[i] = n_active++;
+                    }
+                }
+            }
+        }
+    }
+    if (n_active == 0) {
+        return { 0.0, 0.0 };
+    }
+
+    Eigen::MatrixXd Hd = Eigen::MatrixXd::Zero(n_active, n_active);
+    for (int k = 0; k < H.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(H, k); it; ++it) {
+            if (it.value() != 0) {
+                Hd(local[it.row()], local[it.col()]) += it.value();
+            }
+        }
+    }
+    // Symmetrize numerically to remove tiny asymmetry from triplet ordering.
+    Hd = 0.5 * (Hd + Hd.transpose()).eval();
+
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(
+        Hd, Eigen::EigenvaluesOnly);
+    REQUIRE(es.info() == Eigen::Success);
+    double lambda_min = es.eigenvalues().minCoeff();
+    double lambda_max = es.eigenvalues().maxCoeff();
+    if (n_active < H.rows()) { // the inactive DOFs' zero eigenvalues
+        lambda_min = std::min(lambda_min, 0.0);
+        lambda_max = std::max(lambda_max, 0.0);
+    }
+    return { lambda_min, lambda_max };
+}
+
+/// Positive-weight face quadrature rules for the 3D face-quadrature tests:
+/// "vertices+centroid" (the three vertices and the centroid) or
+/// "interior-degree-2" (three interior points, exact for degree 2).
+FaceQuadRule make_face_quad_rule(const std::string& name)
+{
+    if (name == "vertices+centroid") {
+        return {
+            { { { 1., 0., 0. } }, 0.25 },
+            { { { 0., 1., 0. } }, 0.25 },
+            { { { 0., 0., 1. } }, 0.25 },
+            { { { 1. / 3, 1. / 3, 1. / 3 } }, 0.25 },
+        };
+    }
+    REQUIRE(name == "interior-degree-2");
+    return {
+        { { { 2. / 3, 1. / 6, 1. / 6 } }, 1. / 3 },
+        { { { 1. / 6, 2. / 3, 1. / 6 } }, 1. / 3 },
+        { { { 1. / 6, 1. / 6, 2. / 3 } }, 1. / 3 },
+    };
 }
 
 CollisionMesh
@@ -1097,7 +1166,8 @@ TEST_CASE(
 // 3D FACE QUADRATURE TESTS //
 
 // Verify that face quadrature gives gradient/hessian consistent with finite
-// differences on the wrapped-sphere geometry, for several quadrature orders.
+// differences on the wrapped-sphere geometry, for two positive-weight face
+// quadrature rules (params.set_quad_rule()).
 TEST_CASE(
     "Face Quadrature Gradient and Hessian",
     "[esp_potential], [esp_potential_3d]")
@@ -1107,10 +1177,11 @@ TEST_CASE(
     CollisionMesh& mesh = data.mesh;
 
     const double dhat = 0.15;
-    // quad_order only sets the 2D rule; this test does not set a 3D face
-    // quadrature rule (params.set_quad_rule()).
-    const int quad_order = GENERATE(0, 3, 6);
-    ESPParameters params(dhat, 1., quad_order);
+    const std::string rule_name =
+        GENERATE(as<std::string>(), "vertices+centroid", "interior-degree-2");
+    CAPTURE(rule_name);
+    ESPParameters params(dhat, 1.);
+    params.set_quad_rule(make_face_quad_rule(rule_name));
 
     const bool normalize_weights = GENERATE(true, false);
     ESPPotential potential(params, normalize_weights);
@@ -1194,17 +1265,8 @@ TEST_CASE(
     ESPCollisions collisions;
     collisions.build(mesh, V, params);
 
-    Eigen::SparseMatrix<double> H =
-        potential.hessian(collisions, mesh, V, psd_method);
-    Eigen::MatrixXd Hd(H);
-    // Symmetrize numerically to remove tiny asymmetry from triplet ordering.
-    Hd = 0.5 * (Hd + Hd.transpose()).eval();
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(
-        Hd, Eigen::EigenvaluesOnly);
-    REQUIRE(es.info() == Eigen::Success);
-    const double lambda_min = es.eigenvalues().minCoeff();
-    const double lambda_max = es.eigenvalues().maxCoeff();
+    const auto [lambda_min, lambda_max] =
+        eigenvalue_range(potential.hessian(collisions, mesh, V, psd_method));
     const double tol = std::max(1e-10, 1e-10 * std::abs(lambda_max));
 
     INFO(
@@ -1304,8 +1366,9 @@ TEST_CASE("NearFarBarrier decomposition", "[esp_potential][barrier]")
     }
 }
 
-// Same check over quad_order. Note quad_order only sets the 2D rule; 3D face
-// quadrature needs params.set_quad_rule(), which this test does not call.
+// Same check with a face quadrature rule (params.set_quad_rule()), which adds
+// face-point stencils to each face's block. dbar_factor = 0 covers the
+// per-stencil projection branch of the normalized potential.
 TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
 {
     const std::string mesh_name =
@@ -1316,9 +1379,11 @@ TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
               (tests::DATA_DIR / "two-cubes-close.ply").string());
 
     const double dhat = 0.15;
-    const int quad_order = GENERATE(0, 3, 6);
-    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
-    ESPParameters params(dhat, dbar_factor, quad_order);
+    const std::string rule_name =
+        GENERATE(as<std::string>(), "vertices+centroid", "interior-degree-2");
+    const double dbar_factor = GENERATE(1.0, 0.4, 0.0);
+    ESPParameters params(dhat, dbar_factor);
+    params.set_quad_rule(make_face_quad_rule(rule_name));
 
     const bool normalize_weights = GENERATE(true, false);
     const PSDProjectionMethod psd_method =
@@ -1329,22 +1394,14 @@ TEST_CASE("Face Quadrature Hessian PSD", "[esp_potential], [esp_potential_3d]")
     ESPCollisions collisions;
     collisions.build(mesh, V, params);
 
-    Eigen::SparseMatrix<double> H =
-        potential.hessian(collisions, mesh, V, psd_method);
-    Eigen::MatrixXd Hd(H);
-    Hd = 0.5 * (Hd + Hd.transpose()).eval();
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(
-        Hd, Eigen::EigenvaluesOnly);
-    REQUIRE(es.info() == Eigen::Success);
-    const double lambda_min = es.eigenvalues().minCoeff();
-    const double lambda_max = es.eigenvalues().maxCoeff();
+    const auto [lambda_min, lambda_max] =
+        eigenvalue_range(potential.hessian(collisions, mesh, V, psd_method));
     const double tol = std::max(1e-10, 1e-10 * std::abs(lambda_max));
 
     INFO(
         "mesh=" << mesh_name << " dbar_factor=" << dbar_factor
-                << " normalize_weights=" << normalize_weights << " quad_order="
-                << quad_order << " method=" << static_cast<int>(psd_method)
+                << " normalize_weights=" << normalize_weights << " rule="
+                << rule_name << " method=" << static_cast<int>(psd_method)
                 << " lambda_min=" << lambda_min
                 << " lambda_max=" << lambda_max);
     REQUIRE(lambda_min >= -tol);

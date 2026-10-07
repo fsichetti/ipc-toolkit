@@ -18,23 +18,25 @@ public:
     /// @brief Initialize the set of collisions used to compute the barrier potential.
     /// @param mesh The collision mesh.
     /// @param vertices Vertices of the collision mesh.
-    /// @param broad_phase_method Broad-phase method to use.
+    /// @param params ESP parameters.
+    /// @param broad_phase Broad-phase method to use (default if nullptr).
     void build(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const ESPParameters params,
+        const ESPParameters& params,
         BroadPhase* broad_phase = nullptr);
 
     /// @brief Initialize the set of collisions used to compute the barrier potential.
-    /// @param candidates Distance candidates from which the collision set is built.
-    ///                   In 3D, build them with all_types = true.
+    /// @param _candidates Distance candidates from which the collision set is
+    ///        built. In 3D, build them with all_types = true.
     /// @param mesh The collision mesh.
     /// @param vertices Vertices of the collision mesh.
+    /// @param params ESP parameters.
     void build(
         const Candidates& _candidates,
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const ESPParameters params);
+        const ESPParameters& params);
 
     // ------------------------------------------------------------------------
 

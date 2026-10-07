@@ -26,7 +26,7 @@ void ESPCollisions::build(
     const Candidates& _candidates,
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
-    const ESPParameters params)
+    const ESPParameters& params)
 {
     assert(vertices.rows() == mesh.num_vertices());
 
@@ -122,7 +122,7 @@ void ESPCollisions::build(
 void ESPCollisions::build(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
-    const ESPParameters params,
+    const ESPParameters& params,
     BroadPhase* broad_phase)
 {
     assert(vertices.rows() == mesh.num_vertices());

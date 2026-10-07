@@ -129,6 +129,43 @@ double ESPCollisionTemplate<PrimitiveA, PrimitiveB>::compute_distance(
     return 0;
 }
 
+template <typename PrimitiveA, typename PrimitiveB>
+std::pair<double, double>
+ESPCollisionTemplate<PrimitiveA, PrimitiveB>::operator_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> /*positions*/,
+    const ESPParameters& /*params*/,
+    const NearFarBarrier* /*nf_barrier*/) const
+{
+    return { 0.0, 0.0 };
+}
+
+template <typename PrimitiveA, typename PrimitiveB>
+auto ESPCollisionTemplate<PrimitiveA, PrimitiveB>::gradient_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const ESPParameters& /*params*/,
+    const NearFarBarrier* /*nf_barrier*/) const -> std::
+    pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>>
+{
+    const VectorMax<double, ELEMENT_SIZE> zero =
+        VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
+    return { zero, zero };
+}
+
+template <typename PrimitiveA, typename PrimitiveB>
+auto ESPCollisionTemplate<PrimitiveA, PrimitiveB>::hessian_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const ESPParameters& /*params*/,
+    const NearFarBarrier* /*nf_barrier*/) const
+    -> std::pair<
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>,
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>>
+{
+    const auto n = positions.size();
+    const MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero =
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
+    return { zero, zero };
+}
+
 // ---- 3D specializations ----
 
 template <>

@@ -81,38 +81,30 @@ public:
     double
     compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
 
+    // The near/far functions are only declared here. Their generic stubs and
+    // the 3D specializations are both defined in esp_collision_template.cpp:
+    // a generic definition in the class body can be instantiated (MSVC does)
+    // before the specializations are seen, putting the zero stub in the
+    // vtable.
+
     std::pair<double, double> operator_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params,
-        const NearFarBarrier* nf_barrier) const override
-    {
-        return { 0.0, 0.0 };
-    }
+        const NearFarBarrier* nf_barrier) const override;
 
     std::pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>>
     gradient_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params,
-        const NearFarBarrier* nf_barrier) const override
-    {
-        VectorMax<double, ELEMENT_SIZE> zero =
-            VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
-        return { zero, zero };
-    }
+        const NearFarBarrier* nf_barrier) const override;
 
     std::pair<
         MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>,
         MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>>
     hessian_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const ESPParameters& /*params*/,
-        const NearFarBarrier* /*near_far*/) const override
-    {
-        int n = positions.size();
-        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero =
-            MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
-        return { zero, zero };
-    }
+        const ESPParameters& params,
+        const NearFarBarrier* nf_barrier) const override;
 
 private:
     PrimitiveA primitive_a;
