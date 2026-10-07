@@ -65,12 +65,17 @@ struct ESPParameters {
     const double dbar;
     const double dbar_factor_value;
 
-    /// Barrier function used in 3D collision evaluation.
+    /// Barrier evaluated on each pair's unsquared distance d with activation
+    /// distance dhat, in 2D and 3D. With an InversePowerBarrier of power p, the
+    /// 3D edge-edge mollifier weights are raised to the power max(1, round(p) +
+    /// 1).
     std::shared_ptr<Barrier> barrier =
         std::make_shared<NormalizedClampedLogBarrier<>>();
     /// Gauss-Lobatto edge quadrature order (2D): order n uses n + 1 points and
     /// must be at least 1 in 2D. Unused in 3D.
     const int quad_order;
+    /// Weight each face by its area / 9 (3D), or each edge by its area
+    /// (CollisionMesh::edge_area(), 2D). If false, every weight is 1.
     bool area_weights;
     const IntegrationType integration_type;
 

@@ -16,7 +16,6 @@ namespace ipc {
 static constexpr double pi_v = 3.14159265358979323846;
 
 void lobatto_compute(int n, std::vector<double>& x, std::vector<double>& w);
-// Class to compute and cache nodes and weights for Gauss-Lobatto quadrature.
 /// A single edge quadrature point in [0, 1] with its weight.
 /// Parallel to FaceQuadPoint for face quadrature.
 struct EdgeQuadPoint {
@@ -24,12 +23,13 @@ struct EdgeQuadPoint {
     double weight;
 };
 
+// Class to compute and cache nodes and weights for Gauss-Lobatto quadrature.
 class GaussLobatto {
 public:
     using Rule = std::vector<EdgeQuadPoint>;
 
-    // Get the quadrature rule for a given order n.
-    // For an n-point rule, integration is exact for degrees up to 2n-3.
+    // Get the quadrature rule for a given order n >= 1: the (n + 1)-point
+    // rule, exact for polynomials of degree up to 2n - 1.
     static const Rule& get_rule(int n)
     {
         if (n < 1) {
@@ -681,8 +681,8 @@ lobatto_compute(int n1, std::vector<double>& x, std::vector<double>& w)
 
   Parameters:
 
-    Input, int N, the order.
-    N must be at least 2.
+    Input, int N1, the order. The rule has N = N1 + 1 points, so N1 must
+    be at least 1.
 
     Output, double X[N], the abscissas.
 

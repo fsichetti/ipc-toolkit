@@ -110,6 +110,10 @@ public:
     /// @param normal_stiffness Stiffness of the normal potential.
     /// @param mu_s The static friction coefficient per vertex.
     /// @param mu_k The kinetic friction coefficient per vertex.
+    /// @param normalize_weights Divide each face's weight by its total weight
+    ///        (vertex or face-rule weights plus the edge-edge mollifier
+    ///        weights). Unlike ESPPotential with use_near_far = true, near and
+    ///        far parts are not normalized separately. 3D only.
     /// @param blend_mu Function to blend vertex-based coefficients of friction. Defaults to average.
     void build(
         const CollisionMesh& mesh,

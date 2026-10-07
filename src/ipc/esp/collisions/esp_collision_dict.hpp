@@ -15,12 +15,15 @@ struct ESPCollisionPairMap;
 
 enum class PointType : std::uint8_t { VERTEX, EDGE, FACE };
 
-/// @brief A collection of collision pairs, they can be (Vert, Vert), (Vert, Edge), or (Vert, Face)
-/// The first entry of the pairs is always "Vert", which could be actually:
+/// @brief The collision pairs of one ESP query point with nearby primitives:
+/// (point, vertex), (point, edge) or, in 3D, (point, face). In (point, edge)
+/// and (point, face) pairs, the query point is primitive B in 3D and primitive
+/// A in 2D; 3D (point, vertex) pairs order their two vertices by ID. It can be
 ///     1. A real vertex
 ///     2. A point on an edge, as the closest point between a pair of edges
-///     3. A point at the face center / edge quadrature point
-/// In 2 and 3, the "Vert" is a virtual vertex that does not exist in the
+///     3. A face quadrature point (ESPParameters::set_quad_rule()) or, in 2D,
+///        an edge quadrature point
+/// In 2 and 3, the point is a virtual vertex that does not exist in the
 /// CollisionMesh, the ID of a virtual vertex is always #n_verts, i.e.
 /// immediately after all real vertices.
 /// @tparam DIM Spatial dimension (2 or 3). Default is 3.
@@ -96,7 +99,7 @@ public:
         m_ee_dtype = dtype;
     }
 
-    /* These functions are only available after calling finish_insertion() */
+    /* These functions are only available after calling initialize() */
 
     // Global indices of DoFs
     const std::vector<index_t>& dofs() const;

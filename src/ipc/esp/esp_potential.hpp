@@ -75,6 +75,7 @@ public:
     /// @brief Compute the hessian of the potential for a single collision.
     /// @param collision The collision.
     /// @param positions The collision stencil's positions.
+    /// @param project_hessian_to_psd Make sure the hessian is positive semi-definite.
     /// @return The hessian of the potential.
     Eigen::MatrixXd hessian(
         const ESPCollision& collision,
@@ -91,7 +92,8 @@ protected:
     ///        splitting near and far contributions when 0 < dbar_factor <= 2.
     ///        The far part is nonzero for dbar_factor < 2 (e.g., at 1) and
     ///        vanishes identically at 2, where the split equals the unsplit
-    ///        normalized potential.
+    ///        normalized potential. 3D only: the 2D potential is never
+    ///        normalized.
     const bool use_near_far;
 };
 

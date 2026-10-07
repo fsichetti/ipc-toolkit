@@ -468,11 +468,24 @@ private:
 /// @brief Near-Far barrier function.
 /// This barrier function takes another "base" barrier object as argument.
 /// All operations defined in Barrier defer the computation to its base barrier.
+/// In addition, it splits the base barrier \f$b\f$ into a near and a far part,
+///
+/// \f\[
+///     b_\text{near}(d) = b(d)\,(1 - H(d)), \quad
+///     b_\text{far}(d) = b(d)\,H(d), \quad
+///     b_\text{near} + b_\text{far} = b,
+/// \f\]
+///
+/// where \f$H\f$ is a C² piecewise-cubic step rising from 0 at
+/// \f$d = \alpha\hat{d}/2\f$ to 1 at \f$d = \alpha\hat{d}\f$. For
+/// \f$\alpha \ge 2\f$ the far part vanishes identically, since \f$b = 0\f$ for
+/// \f$d \ge \hat{d}\f$. ESPPotential uses \f$\alpha =\f$ dbar_factor.
 class NearFarBarrier : public Barrier {
 public:
     /// @brief Construct a NearFarBarrier.
     /// @param base_barrier The base barrier function to use.
-    /// @param alpha A double parameter.
+    /// @param alpha Split parameter: the far weight H rises from 0 at
+    ///        d = alpha * dhat / 2 to 1 at d = alpha * dhat.
     NearFarBarrier(const Barrier* const base_barrier, const double alpha)
         : m_base_barrier(base_barrier)
         , m_alpha(alpha)
@@ -526,22 +539,40 @@ public:
         return m_base_barrier->units(dhat);
     }
 
-    /// @brief Evaluate the near function.
+    /// @brief Evaluate the near part b(d) (1 - H(d)).
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The value of the near part at d.
     double near_value(const double d, const double dhat) const;
 
-    /// @brief Evaluate the far function.
+    /// @brief Evaluate the far part b(d) H(d).
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The value of the far part at d.
     double far_value(const double d, const double dhat) const;
 
-    /// @brief Evaluate the first derivative of the near function.
+    /// @brief Evaluate the first derivative of the near part wrt d.
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The first derivative of the near part at d.
     double first_derivative_near(const double d, const double dhat) const;
 
-    /// @brief Evaluate the first derivative of the far function.
+    /// @brief Evaluate the first derivative of the far part wrt d.
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The first derivative of the far part at d.
     double first_derivative_far(const double d, const double dhat) const;
 
-    /// @brief Evaluate the second derivative of the near function.
+    /// @brief Evaluate the second derivative of the near part wrt d.
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The second derivative of the near part at d.
     double second_derivative_near(const double d, const double dhat) const;
 
-    /// @brief Evaluate the second derivative of the far function.
+    /// @brief Evaluate the second derivative of the far part wrt d.
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The second derivative of the far part at d.
     double second_derivative_far(const double d, const double dhat) const;
 
 private:

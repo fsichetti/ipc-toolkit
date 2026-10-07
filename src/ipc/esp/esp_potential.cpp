@@ -227,8 +227,8 @@ double ESPPotential::operator()(
                         }
                     }
 
-                    // Face-interior quadrature points controlled by
-                    // params.quad_order.
+                    // Face-interior quadrature points from
+                    // params.get_quad_rule().
                     const auto& face_quad_rule = params.get_quad_rule();
                     {
                         auto iter = collisions.maps().face_collisions.find(f);

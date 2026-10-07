@@ -188,7 +188,7 @@ void TangentialCollisions::build(
 
         // Helper: compute contact force magnitude for a sub-collision.
         //
-        // Uses the scalar derivative of the log-barrier w.r.t. distance,
+        // Uses the scalar derivative of params.barrier w.r.t. distance,
         // scaled by outer quadrature weight and barrier stiffness.
         auto compute_contact_force = [&](const ESPCollision& cc,
                                          const VertexMatrixView<3>& V_ext,
@@ -253,7 +253,7 @@ void TangentialCollisions::build(
         };
 
         // --- Precompute per-face normalized outer scale ---
-        // HOP outer contribution per face f is: (area_f / 9) [* / total_w_f]
+        // ESP outer contribution per face f is: (area_f / 9) [* / total_w_f]
         // depending on normalize_weights. total_w_f sums active EE mollifiers
         // and either face quadrature weights (when active) or 3 (for the 3
         // face vertices, when face quadrature is not active).
@@ -300,7 +300,7 @@ void TangentialCollisions::build(
                     vertices.row(e01).transpose(),
                     vertices.row(e10).transpose(),
                     vertices.row(e11).transpose(), mtypes, dist_sqr);
-                // Attribute to every face containing e0 (HOP loop iterates
+                // Attribute to every face containing e0 (ESP loop iterates
                 // over faces and each face's 3 edges).
                 for (const index_t f : mesh.edges_to_faces()[e0]) {
                     total_w_per_face(f) += mol;
@@ -315,7 +315,7 @@ void TangentialCollisions::build(
             face_scale(f) =
                 normalize_weights ? (w_f / total_w_per_face(f)) : w_f;
         }
-        // Precompute per-vertex HOP outer weight = sum_{f ∋ v} face_scale(f).
+        // Precompute per-vertex ESP outer weight = sum_{f ∋ v} face_scale(f).
         Eigen::VectorXd v_outer_w = Eigen::VectorXd::Zero(n_verts);
         for (index_t f = 0; f < faces.rows(); f++) {
             for (int lv = 0; lv < 3; lv++) {
@@ -403,7 +403,7 @@ void TangentialCollisions::build(
             }
         }
 
-        // Precompute per-edge HOP outer weight = sum_{f ∋ e} face_scale(f).
+        // Precompute per-edge ESP outer weight = sum_{f ∋ e} face_scale(f).
         Eigen::VectorXd e_outer_w = Eigen::VectorXd::Zero(edges.rows());
         for (index_t f = 0; f < faces.rows(); f++) {
             for (int le = 0; le < 3; le++) {

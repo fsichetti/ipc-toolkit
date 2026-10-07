@@ -21,7 +21,7 @@ enum class ESPCollisionType : uint8_t {
     FACE_FACE = 5
 };
 
-/// @brief Contact pair class for Geometric Contact Potential.
+/// @brief Contact pair (stencil) of the Extremum Sum Potential (ESP).
 /// @note Unlike NormalCollision, ESPCollision has to be reconstructed whenever vertices change position
 class ESPCollision {
 public:
@@ -53,13 +53,14 @@ public:
     virtual size_t n_vertices_b() const = 0;
 
     /// @brief Get the vertex IDs of the collision stencil.
-    /// @return The vertex IDs of the collision stencil. Size is always 4, but elements i > num_vertices() are -1.
+    /// @return The num_vertices() vertex IDs of the collision stencil.
     std::vector<index_t> vertex_ids() const;
     virtual index_t vertex_id(index_t i) const = 0;
 
     /// @brief Get the vertex attributes of the collision stencil.
     /// @param vertices Vertex attributes
-    /// @return The vertex positions of the collision stencil. Size is always 4, but elements i > num_vertices() are NaN.
+    /// @return The vertex positions of the collision stencil, one row per
+    ///         vertex (num_vertices() rows).
     Eigen::MatrixXd vertices(Eigen::ConstRef<Eigen::MatrixXd> vertices) const
     {
         const int DIM = vertices.cols();
@@ -90,17 +91,17 @@ public:
     virtual double
     compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const = 0;
 
-    /// @brief Compute the value of the GCP potential
+    /// @brief Compute the barrier (params.barrier) of this pair's distance.
     virtual double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params) const = 0;
 
-    /// @brief Compute the gradient of the GCP potential wrt. vertices involved
+    /// @brief Compute the gradient of the barrier wrt. the stencil's vertices.
     virtual VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params) const = 0;
 
-    /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
+    /// @brief Compute the Hessian of the barrier wrt. the stencil's vertices.
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const ESPParameters& params) const = 0;
