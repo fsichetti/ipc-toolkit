@@ -89,7 +89,7 @@ index_t ESPCollisionTemplate<PrimitiveA, PrimitiveB>::vertex_id(index_t i) const
         return primitive_a.vertex_id(i);
     }
     i -= primitive_a.n_vertices();
-    assert((index_t)primitive_b.n_vertices() > i);
+    assert(static_cast<index_t>(primitive_b.n_vertices()) > i);
     return primitive_b.vertex_id(i);
 }
 
