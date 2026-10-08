@@ -105,13 +105,13 @@ namespace PointPotentialHelper {
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
         const NearFarBarrier& nf_barrier);
 
-    double evaluate_potential_at_face_center_with_cached_collisions(
+    double evaluate_potential_at_face_interior_point_with_cached_collisions(
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params);
 
     std::pair<double, double>
-    evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+    evaluate_potential_at_face_interior_point_with_cached_collisions_nearfar(
         VertexMatrixView<3> V_extended,
         const ESPCollisionDict<PointType::FACE>& collisions,
         const ESPParameters& params,

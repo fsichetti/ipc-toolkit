@@ -79,7 +79,7 @@ public:
 
     /// @brief Select this stencil's DOF from the full matrix of DOF.
     /// In 3D, some vertices may not be directly stored in the full matrix, e.g.
-    /// face centers and edge-edge closest points.
+    /// face quadrature points and edge-edge closest points.
     Eigen::VectorXd dof(VertexMatrixView<3> X_extended) const;
 
     /// @brief Select this stencil's DOF from the full 2D matrix of DOF (with a virtual vertex appended).

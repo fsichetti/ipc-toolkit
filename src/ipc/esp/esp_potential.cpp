@@ -247,7 +247,7 @@ double ESPPotential::operator()(
                                     + qp.lambda[2] * X.row(mesh.faces()(f, 2));
                                 if (use_nf) {
                                     auto [fq_near, fq_far] = PointPotentialHelper::
-                                        evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+                                        evaluate_potential_at_face_interior_point_with_cached_collisions_nearfar(
                                             VertexMatrixView<3>(X, q_pos),
                                             *iter->second[qi], params,
                                             *nf_barrier);
@@ -257,7 +257,7 @@ double ESPPotential::operator()(
                                         * qp.weight * fq_far;
                                 } else {
                                     const double fq_val = PointPotentialHelper::
-                                        evaluate_potential_at_face_center_with_cached_collisions(
+                                        evaluate_potential_at_face_interior_point_with_cached_collisions(
                                             VertexMatrixView<3>(X, q_pos),
                                             *iter->second[qi], params);
                                     total_p += FACE_QUADRATURE_WEIGHT_SCALE
@@ -583,7 +583,7 @@ Eigen::VectorXd ESPPotential::gradient(
 
                                 if (use_nf_grad) {
                                     auto [P_n, P_f] = PointPotentialHelper::
-                                        evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+                                        evaluate_potential_at_face_interior_point_with_cached_collisions_nearfar(
                                             X_qp, dict, params, *nf_barrier);
                                     auto [grad_n, grad_f] = PointPotentialHelper::
                                         evaluate_potential_gradient_at_face_interior_point_with_cached_collisions_nearfar(
@@ -599,7 +599,7 @@ Eigen::VectorXd ESPPotential::gradient(
                                     total_p_near += qp_weight_scale * P_n;
                                 } else {
                                     const double P = PointPotentialHelper::
-                                        evaluate_potential_at_face_center_with_cached_collisions(
+                                        evaluate_potential_at_face_interior_point_with_cached_collisions(
                                             X_qp, dict, params);
                                     const Eigen::VectorXd grad_p =
                                         PointPotentialHelper::
@@ -1045,7 +1045,7 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
 
                                 if (use_nf_hess) {
                                     auto [P_n, P_f] = PointPotentialHelper::
-                                        evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+                                        evaluate_potential_at_face_interior_point_with_cached_collisions_nearfar(
                                             X_qp, dict, params, *nf_barrier);
                                     auto [grad_n, grad_f] = PointPotentialHelper::
                                         evaluate_potential_gradient_at_face_interior_point_with_cached_collisions_nearfar(
@@ -1077,7 +1077,7 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                     entry.p_near = FACE_QUADRATURE_WEIGHT_SCALE
                                         * qp.weight
                                         * PointPotentialHelper::
-                                            evaluate_potential_at_face_center_with_cached_collisions(
+                                            evaluate_potential_at_face_interior_point_with_cached_collisions(
                                                        X_qp, dict, params);
                                     entry.grad_p_near =
                                         FACE_QUADRATURE_WEIGHT_SCALE * qp.weight
