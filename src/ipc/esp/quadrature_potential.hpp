@@ -117,34 +117,6 @@ namespace PointPotentialHelper {
         const ESPParameters& params,
         const NearFarBarrier& nf_barrier);
 
-    Eigen::VectorXd
-    evaluate_potential_gradient_at_face_center_with_cached_collisions(
-        VertexMatrixView<3> V_extended,
-        const ESPCollisionDict<PointType::FACE>& collisions,
-        const ESPParameters& params);
-
-    Eigen::MatrixXd
-    evaluate_potential_hessian_at_face_center_with_cached_collisions(
-        VertexMatrixView<3> V_extended,
-        const ESPCollisionDict<PointType::FACE>& collisions,
-        const ESPParameters& params,
-        PSDProjectionMethod project_to_psd);
-
-    std::pair<Eigen::VectorXd, Eigen::VectorXd>
-    evaluate_potential_gradient_at_face_center_with_cached_collisions_nearfar(
-        VertexMatrixView<3> V_extended,
-        const ESPCollisionDict<PointType::FACE>& collisions,
-        const ESPParameters& params,
-        const NearFarBarrier& nf_barrier);
-
-    std::pair<Eigen::MatrixXd, Eigen::MatrixXd>
-    evaluate_potential_hessian_at_face_center_with_cached_collisions_nearfar(
-        VertexMatrixView<3> V_extended,
-        const ESPCollisionDict<PointType::FACE>& collisions,
-        const ESPParameters& params,
-        PSDProjectionMethod project_to_psd,
-        const NearFarBarrier& nf_barrier);
-
     /// @brief Gradient of the face-interior potential for an arbitrary
     ///   interior quadrature point q = λ0·v0 + λ1·v1 + λ2·v2.
     /// @param lambda Barycentric coordinates of the interior point.
@@ -239,12 +211,6 @@ public:
         index_t e0,
         index_t e1,
         EdgeEdgeDistanceType dtype,
-        size_t& num_collision_pairs) const;
-
-    std::unique_ptr<ESPCollisionDict<PointType::FACE>>
-    build_collisions_at_face_center(
-        const Eigen::MatrixXd& V,
-        index_t fid,
         size_t& num_collision_pairs) const;
 
     std::unique_ptr<ESPCollisionDict<PointType::FACE>>
