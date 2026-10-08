@@ -540,10 +540,12 @@ TEST_CASE(
     const double dhat = 0.1;
     const double dmin = GENERATE(0.0, 0.01);
     const double d = GENERATE(0.02, 0.05, 0.09);
+    const double stiffness = GENERATE(1.0, 3.5);
+    const bool use_physical_barrier = GENERATE(false, true);
 
     const auto barrier = std::make_shared<InversePowerBarrier>(2.0);
     const BarrierPotential potential(
-        barrier, dhat, /*stiffness=*/1.0, /*use_physical_barrier=*/false,
+        barrier, dhat, stiffness, use_physical_barrier,
         /*use_squared_distance=*/false);
     CHECK(!potential.use_squared_distance());
 
@@ -555,8 +557,12 @@ TEST_CASE(
     x.tail<3>() =
         x.head<3>() + (d + dmin) * Eigen::Vector3d(1, 2, 3).normalized();
 
-    // The barrier sees the unsquared distance, offset by dmin.
-    CHECK(potential(collision, x) == Catch::Approx((*barrier)(d, dhat)));
+    // The barrier sees the unsquared distance, offset by dmin, and is scaled
+    // by the stiffness (and the physical units) as in the squared mode.
+    const double units = use_physical_barrier ? dhat / barrier->units(dhat) : 1;
+    CHECK(
+        potential(collision, x)
+        == Catch::Approx(stiffness * units * (*barrier)(d, dhat)));
 
     const VectorMax12d grad = potential.gradient(collision, x);
     Eigen::VectorXd fgrad;
@@ -576,6 +582,8 @@ TEST_CASE(
     CHECK(fd::compare_hessian(hess, fhess, 1e-3));
 
     CHECK_THROWS(potential.force_magnitude(d * d, dmin));
+    CHECK_THROWS(
+        potential.force_magnitude_gradient(d * d, VectorMax12d::Zero(6), dmin));
 }
 
 // -- Benchmarking ------------------------------------------------------------

@@ -33,9 +33,11 @@ public:
     /// @param use_physical_barrier Whether to use the physical barrier.
     /// @param use_squared_distance If true (default), the barrier receives
     ///        squared distance d² as input (standard IPC convention). If false,
-    ///        the barrier receives the actual Euclidean distance d, with chain-
-    ///        rule corrections applied internally so NormalPotential is
-    ///        unchanged.
+    ///        the barrier receives the Euclidean distance d - dmin with
+    ///        activation distance dhat; the value, gradient and Hessian are
+    ///        chain-ruled to d² and scaled by the stiffness as in the squared
+    ///        mode. force_magnitude() and force_magnitude_gradient() throw in
+    ///        this mode, so it cannot build tangential collisions.
     BarrierPotential(
         std::shared_ptr<Barrier> barrier,
         const double dhat,
@@ -164,8 +166,8 @@ protected:
     bool m_use_physical_barrier = false;
 
     /// @brief If true (default), the barrier receives d² as input (standard
-    ///        IPC convention). If false, it receives actual distance d, with
-    ///        chain-rule corrections applied so NormalPotential is unchanged.
+    ///        IPC convention). If false, it receives the distance d (see the
+    ///        constructor).
     bool m_use_squared_distance = true;
 };
 

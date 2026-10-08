@@ -85,7 +85,7 @@ double BarrierPotential::operator()(
         if (use_physical_barrier()) {
             b *= dhat() / barrier().units(dhat());
         }
-        return b;
+        return stiffness() * b;
     }
 
     double b =
@@ -107,7 +107,7 @@ double BarrierPotential::gradient(
         if (use_physical_barrier()) {
             db *= dhat() / barrier().units(dhat());
         }
-        return db;
+        return stiffness() * db;
     }
 
     double db = barrier().first_derivative(
@@ -132,7 +132,7 @@ double BarrierPotential::hessian(
         if (use_physical_barrier()) {
             d2b *= dhat() / barrier().units(dhat());
         }
-        return d2b;
+        return stiffness() * d2b;
     }
 
     double d2b = barrier().second_derivative(
