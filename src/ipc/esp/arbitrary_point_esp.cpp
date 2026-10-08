@@ -143,12 +143,8 @@ namespace {
         case PointTriangleDistanceType::P_E2:
             insert_by_value(s.ev, EV(e2, vid, mesh), weight);
             break;
-        case PointTriangleDistanceType::P_T:
-            insert_by_value(s.fv, FV(fi, vid, mesh), weight);
-            break;
-        case PointTriangleDistanceType::AUTO:
-        default:
-            assert(false);
+        default: // point_triangle_distance_type_exact never returns AUTO
+            assert(dtype == PointTriangleDistanceType::P_T);
             insert_by_value(s.fv, FV(fi, vid, mesh), weight);
             break;
         }

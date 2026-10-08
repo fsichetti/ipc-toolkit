@@ -157,7 +157,7 @@ public:
     operator=(QuadratureCollisionsBuilder&&) = default;
     QuadratureCollisionsBuilder(const QuadratureCollisionsBuilder& other);
     QuadratureCollisionsBuilder&
-    operator=(const QuadratureCollisionsBuilder& other);
+    operator=(const QuadratureCollisionsBuilder& other) = delete;
     ~QuadratureCollisionsBuilder();
 
     void build_vertex_collisions(

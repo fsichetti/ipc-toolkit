@@ -273,16 +273,14 @@ void TangentialCollisions::build(
             // Add per-face sum of active EE mollifiers (EA_EB only).
             for (const auto& [ei_pair, dict_ptr] :
                  collisions.maps().edge_edge_collisions) {
-                if (dict_ptr->ee_dtype() != EdgeEdgeDistanceType::EA_EB) {
-                    continue;
-                }
+                // The builder keeps only EA_EB pairs of edges that share no
+                // vertex.
+                assert(dict_ptr->ee_dtype() == EdgeEdgeDistanceType::EA_EB);
                 const index_t e0 = ei_pair.first;
                 const index_t e1 = ei_pair.second;
                 const index_t e00 = edges(e0, 0), e01 = edges(e0, 1);
                 const index_t e10 = edges(e1, 0), e11 = edges(e1, 1);
-                if (e00 == e10 || e00 == e11 || e01 == e10 || e01 == e11) {
-                    continue;
-                }
+                assert(e00 != e10 && e00 != e11 && e01 != e10 && e01 != e11);
                 const double dist_sqr = edge_edge_distance_parallel_safe(
                     vertices.row(e00), vertices.row(e01), vertices.row(e10),
                     vertices.row(e11), EdgeEdgeDistanceType::EA_EB);
@@ -420,11 +418,8 @@ void TangentialCollisions::build(
             const index_t e00 = edges(e0, 0), e01 = edges(e0, 1);
             const index_t e10 = edges(e1, 0), e11 = edges(e1, 1);
 
-            // The ESP potential only contributes for EA_EB; skip otherwise so
-            // friction matches exactly.
-            if (dtype != EdgeEdgeDistanceType::EA_EB) {
-                continue;
-            }
+            // The builder keeps only EA_EB pairs.
+            assert(dtype == EdgeEdgeDistanceType::EA_EB);
 
             // Compute virtual vertex position on edge e0
             // (same logic as quadrature_potential.cpp)
@@ -788,6 +783,8 @@ void TangentialCollisions::build(
             }
         }
     }
+
+    reset_lagged_anisotropic_friction_coefficients();
 }
 
 } // namespace ipc

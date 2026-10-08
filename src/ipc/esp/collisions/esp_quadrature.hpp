@@ -702,7 +702,7 @@ lobatto_compute(int n1, std::vector<double>& x, std::vector<double>& w)
         throw std::runtime_error(oss.str());
     }
 
-    if (n < 20) {
+    if (n <= 20) {
         // Use tabled weights and nodes
         lobatto_set(n, x, w);
         return;

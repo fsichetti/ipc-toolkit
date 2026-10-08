@@ -424,3 +424,17 @@ TEST_CASE(
         CHECK(potential(V, q) == Catch::Approx((*params.barrier)(-q(1), dhat)));
     }
 }
+
+TEST_CASE(
+    "Arbitrary Point ESP: mesh dimension mismatch",
+    "[esp_potential][arbitrary_point_esp]")
+{
+    const Fixture2D fx2;
+    CHECK_THROWS_AS(
+        ArbitraryPointESP<3>(fx2.mesh, ESPParameters(fx2.dhat)),
+        std::runtime_error);
+    const Fixture fx3;
+    CHECK_THROWS_AS(
+        ArbitraryPointESP<2>(fx3.mesh, ESPParameters(fx3.dhat)),
+        std::runtime_error);
+}

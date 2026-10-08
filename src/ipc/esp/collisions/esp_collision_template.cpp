@@ -196,20 +196,6 @@ double ESPCollisionTemplate<Edge3P1, Vertex3>::compute_distance(
 }
 
 template <>
-double ESPCollisionTemplate<Edge3P1, Edge3P1>::compute_distance(
-    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
-{
-    const int n_verts = vertices.rows();
-    if (n_verts > vertex_id(0) && n_verts > vertex_id(1)
-        && n_verts > vertex_id(2) && n_verts > vertex_id(3)) {
-        return edge_edge_distance(
-            vertices.row(vertex_id(0)), vertices.row(vertex_id(1)),
-            vertices.row(vertex_id(2)), vertices.row(vertex_id(3)));
-    }
-    return std::numeric_limits<double>::max();
-}
-
-template <>
 double ESPCollisionTemplate<Face3P1, Vertex3>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {

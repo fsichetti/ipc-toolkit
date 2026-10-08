@@ -204,19 +204,17 @@ std::string ESPCollisions::to_string(
             }
         }
     }
+    // Face collisions involve the quadrature point, a virtual vertex that is
+    // not a row of vertices, so only their ids and weights are printed.
     for (const auto& ccs : m_maps->face_collisions) {
-        for (const auto& dict_ptr : ccs.second) {
-            for (int i = 0; i < dict_ptr->size(); i++) {
-                const auto& cc = (*dict_ptr)[i];
+        for (size_t qi = 0; qi < ccs.second.size(); qi++) {
+            const auto& dict = *ccs.second[qi];
+            for (int i = 0; i < dict.size(); i++) {
+                const auto& cc = dict[i];
                 ss << "\n";
-                {
-                    ss << fmt::format(
-                        "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}",
-                        cc.name(), cc[0], cc[1], cc.weight,
-                        cc.compute_distance(vertices),
-                        cc(cc.dof(vertices), params),
-                        cc.gradient(cc.dof(vertices), params).norm());
-                }
+                ss << fmt::format(
+                    "face [{}]: {} point {} ({} {}) weight {}", cc.name(),
+                    ccs.first, qi, cc[0], cc[1], cc.weight);
             }
         }
     }

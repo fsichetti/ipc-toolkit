@@ -1,5 +1,8 @@
+#include <tests/utils.hpp>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/collisions/normal/normal_collisions.hpp>
@@ -39,6 +42,17 @@ CollisionMesh star_mesh(const std::vector<bool>& obstacle_vertex)
     return CollisionMesh(
         std::vector<bool>(V.rows(), true), std::vector<bool>(V.rows(), false),
         obstacle_vertex, V, E, F);
+}
+
+/// The three vertices and the centroid of each face.
+FaceQuadRule vertices_and_centroid_rule()
+{
+    return {
+        { { { 1., 0., 0. } }, 0.25 },
+        { { { 0., 1., 0. } }, 0.25 },
+        { { { 0., 0., 1. } }, 0.25 },
+        { { { 1. / 3, 1. / 3, 1. / 3 } }, 0.25 },
+    };
 }
 
 const std::vector<bool> LOWER_OBSTACLE = { false, false, false, false,
@@ -172,10 +186,17 @@ TEST_CASE("ESP integration types", "[esp_potential][obstacle]")
 {
     using IntegrationType = ESPParameters::IntegrationType;
 
-    const auto potential_value = [](const std::vector<bool>& obstacle_vertex,
-                                    const IntegrationType type) {
+    // Vertex integration or a face quadrature rule.
+    const bool face_rule = GENERATE(false, true);
+    CAPTURE(face_rule);
+
+    const auto potential_value = [&](const std::vector<bool>& obstacle_vertex,
+                                     const IntegrationType type) {
         const CollisionMesh mesh = star_mesh(obstacle_vertex);
-        const ESPParameters params(DHAT, 1.0, 1, true, type);
+        ESPParameters params(DHAT, 1.0, 1, true, type);
+        if (face_rule) {
+            params.set_quad_rule(vertices_and_centroid_rule());
+        }
         ESPCollisions collisions;
         collisions.build(mesh, mesh.rest_positions(), params);
         return ESPPotential(params)(collisions, mesh, mesh.rest_positions());
@@ -216,4 +237,104 @@ TEST_CASE("ESP integration types", "[esp_potential][obstacle]")
     // Obstacle-only contact is integrated only by BRUTE_FORCE.
     CHECK(potential_value(all, IntegrationType::NORMAL) == 0);
     CHECK(potential_value(all, IntegrationType::NO_OBST) == 0);
+}
+
+TEST_CASE("ESP integration types 2D", "[esp_potential][obstacle]")
+{
+    using IntegrationType = ESPParameters::IntegrationType;
+
+    // Two squares 0.2 apart, mirror images of each other about x = 0.
+    Eigen::MatrixXd V(8, 2);
+    V << -1, 1, -1, 0, -.1, 0, -.1, 1, .1, 1, .1, 0, 1, 0, 1, 1;
+    Eigen::MatrixXi E(8, 2);
+    E << 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4;
+
+    const auto potential_value = [&](const std::vector<bool>& obstacle_vertex,
+                                     const IntegrationType type) {
+        const CollisionMesh mesh(
+            std::vector<bool>(V.rows(), true),
+            std::vector<bool>(V.rows(), false), obstacle_vertex, V, E,
+            Eigen::MatrixXi());
+        const ESPParameters params(0.6, 1.0, 2, true, type);
+        ESPCollisions collisions;
+        collisions.build(mesh, V, params);
+        return ESPPotential(params)(collisions, mesh, V);
+    };
+
+    const std::vector<bool> none(8, false), all(8, true);
+    const std::vector<bool> left = { true,  true,  true,  true,
+                                     false, false, false, false };
+
+    const double expected = potential_value(none, IntegrationType::BRUTE_FORCE);
+    REQUIRE(expected > 0);
+    for (const auto type :
+         { IntegrationType::NORMAL, IntegrationType::NO_OBST }) {
+        CHECK(
+            potential_value(none, type)
+            == Catch::Approx(expected).epsilon(1e-12));
+    }
+    for (const auto& flags : { left, all }) {
+        CHECK(
+            potential_value(flags, IntegrationType::BRUTE_FORCE)
+            == Catch::Approx(expected).epsilon(1e-12));
+    }
+
+    // NO_OBST integrates the dynamic square only.
+    CHECK(
+        potential_value(left, IntegrationType::NO_OBST)
+        == Catch::Approx(expected / 2).epsilon(1e-12));
+    // The obstacle-obstacle terms NORMAL drops sum to zero here.
+    CHECK(
+        potential_value(left, IntegrationType::NORMAL)
+        == Catch::Approx(expected).epsilon(1e-12));
+
+    CHECK(potential_value(all, IntegrationType::NORMAL) == 0);
+    CHECK(potential_value(all, IntegrationType::NO_OBST) == 0);
+}
+
+TEST_CASE(
+    "ESP obstacle vertices next to dynamic vertices",
+    "[esp_potential][obstacle]")
+{
+    using IntegrationType = ESPParameters::IntegrationType;
+
+    // Two unit cubes 0.001 apart with aligned vertices; the first is an
+    // obstacle, so its vertices have dynamic vertex-vertex candidates.
+    Eigen::MatrixXd V_cube;
+    Eigen::MatrixXi E_cube, F_cube;
+    REQUIRE(tests::load_mesh("cube.ply", V_cube, E_cube, F_cube));
+    const int n = V_cube.rows();
+    Eigen::MatrixXd V(2 * n, 3);
+    V << V_cube, V_cube.rowwise() + Eigen::RowVector3d(1.001, 0, 0);
+    Eigen::MatrixXi F(2 * F_cube.rows(), 3);
+    F << F_cube, (F_cube.array() + n).matrix();
+    Eigen::MatrixXi E;
+    igl::edges(F, E);
+    std::vector<bool> obstacle(2 * n, false);
+    std::fill_n(obstacle.begin(), n, true);
+    const CollisionMesh mesh(
+        std::vector<bool>(2 * n, true), std::vector<bool>(2 * n, false),
+        obstacle, V, E, F);
+
+    const bool face_rule = GENERATE(false, true);
+    CAPTURE(face_rule);
+    const auto potential_value = [&](const IntegrationType type) {
+        ESPParameters params(0.5, 1.0, 0, true, type);
+        if (face_rule) {
+            params.set_quad_rule(vertices_and_centroid_rule());
+        }
+        ESPCollisions collisions;
+        collisions.build(mesh, V, params);
+        return ESPPotential(params)(collisions, mesh, V);
+    };
+
+    const double expected = potential_value(IntegrationType::BRUTE_FORCE);
+    REQUIRE(expected > 0);
+    // No obstacle-obstacle pair is within dhat, so NORMAL drops nothing.
+    CHECK(
+        potential_value(IntegrationType::NORMAL)
+        == Catch::Approx(expected).epsilon(1e-12));
+    CHECK(
+        potential_value(IntegrationType::NO_OBST)
+        == Catch::Approx(expected / 2).epsilon(1e-12));
 }

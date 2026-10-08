@@ -9,7 +9,6 @@
 #include "ipc/esp/esp_collision_maps.hpp"
 #include "ipc/esp/esp_collisions_builder.hpp"
 
-#include <algorithm>
 #include <array>
 
 namespace ipc {
@@ -254,10 +253,8 @@ PointPotential::build_collisions_at_edge_edge_closest_point(
             insert_pair(pairs, std::shared_ptr<ESPCollision>(pair));
         }
 
+        // ee_set and ef_set exclude e0 and the faces containing it.
         for (const auto& other_e : e_set) {
-            if (other_e == e0) {
-                continue;
-            }
             if (filter_obstacles_e && mesh.is_obstacle_edge(other_e)) {
                 continue;
             }
@@ -308,12 +305,7 @@ PointPotential::build_collisions_at_edge_edge_closest_point(
             }
         }
 
-        const auto& e0_faces = mesh.edges_to_faces()[e0];
         for (const auto& other_f : f_set) {
-            if (std::find(e0_faces.begin(), e0_faces.end(), other_f)
-                != e0_faces.end()) {
-                continue;
-            }
             if (filter_obstacles_e && mesh.is_obstacle_face(other_f)) {
                 continue;
             }

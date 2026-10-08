@@ -40,22 +40,6 @@ inline double edge_edge_distance_parallel_safe(
 }
 
 template <typename T>
-T point_point_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<T>> a, Eigen::ConstRef<Eigen::Vector3<T>> b)
-{
-    return (a - b).squaredNorm();
-}
-
-template <typename T>
-T point_line_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<T>> p,
-    Eigen::ConstRef<Eigen::Vector3<T>> e0,
-    Eigen::ConstRef<Eigen::Vector3<T>> e1)
-{
-    return (e0 - p).cross(e1 - p).squaredNorm() / (e1 - e0).squaredNorm();
-}
-
-template <typename T>
 T line_line_sqr_distance(
     Eigen::ConstRef<Eigen::Vector3<T>> ea0,
     Eigen::ConstRef<Eigen::Vector3<T>> ea1,
@@ -65,54 +49,6 @@ T line_line_sqr_distance(
     const Eigen::Vector3<T> normal = (ea1 - ea0).cross(eb1 - eb0);
     const T line_to_line = (eb0 - ea0).dot(normal);
     return line_to_line * line_to_line / normal.squaredNorm();
-}
-
-template <typename scalar>
-scalar edge_edge_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> eb0,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> eb1,
-    EdgeEdgeDistanceType dtype)
-{
-    if constexpr (std::is_same<double, scalar>::value) {
-        if (dtype == EdgeEdgeDistanceType::AUTO) {
-            dtype = edge_edge_distance_type(ea0, ea1, eb0, eb1);
-        }
-    }
-
-    switch (dtype) {
-    case EdgeEdgeDistanceType::EA0_EB0:
-        return point_point_sqr_distance<scalar>(ea0, eb0);
-
-    case EdgeEdgeDistanceType::EA0_EB1:
-        return point_point_sqr_distance<scalar>(ea0, eb1);
-
-    case EdgeEdgeDistanceType::EA1_EB0:
-        return point_point_sqr_distance<scalar>(ea1, eb0);
-
-    case EdgeEdgeDistanceType::EA1_EB1:
-        return point_point_sqr_distance<scalar>(ea1, eb1);
-
-    case EdgeEdgeDistanceType::EA_EB0:
-        return point_line_sqr_distance<scalar>(eb0, ea0, ea1);
-
-    case EdgeEdgeDistanceType::EA_EB1:
-        return point_line_sqr_distance<scalar>(eb1, ea0, ea1);
-
-    case EdgeEdgeDistanceType::EA0_EB:
-        return point_line_sqr_distance<scalar>(ea0, eb0, eb1);
-
-    case EdgeEdgeDistanceType::EA1_EB:
-        return point_line_sqr_distance<scalar>(ea1, eb0, eb1);
-
-    case EdgeEdgeDistanceType::EA_EB:
-        return line_line_sqr_distance<scalar>(ea0, ea1, eb0, eb1);
-
-    default:
-        throw std::invalid_argument(
-            "Invalid distance type for edge-edge distance!");
-    }
 }
 
 template <typename T>
@@ -140,39 +76,17 @@ Eigen::Vector<T, 2> line_line_closest_point_pairs_uv(
     return Eigen::Vector<T, 2>(sN, tN) / fac;
 }
 
-// Compute the closest point local coordinate on edge (e0, e1) with respect to
-// edge (e2, e3) This function is written in a consistent way as the edge-edge
-// distance type classification
+/// @brief Local coordinate on edge (e0, e1), clamped to [0, 1], of its point
+/// closest to the line through (e2, e3). ESP edge-edge terms exist only for
+/// EA_EB pairs, where this is the closest point between the edges.
 template <typename T>
 T closest_point_uv(
     Eigen::ConstRef<Eigen::Vector3<T>> e0,
     Eigen::ConstRef<Eigen::Vector3<T>> e1,
     Eigen::ConstRef<Eigen::Vector3<T>> e2,
-    Eigen::ConstRef<Eigen::Vector3<T>> e3,
-    EdgeEdgeDistanceType dtype)
+    Eigen::ConstRef<Eigen::Vector3<T>> e3)
 {
-    Eigen::Vector<T, 3> u = e1 - e0;
-    Eigen::Vector<T, 3> v = e3 - e2;
-
-    T uv(0.);
-    if (dtype == EdgeEdgeDistanceType::EA_EB) {
-        Eigen::Vector2<T> uvs =
-            line_line_closest_point_pairs_uv<T>(e0, e1, e2, e3);
-
-        uv = uvs(0);
-    } else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
-        const T a = u.squaredNorm();
-        const T d = u.dot(e0 - e2);
-        uv = (-d) / a;
-    } else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
-        const T a = u.squaredNorm();
-        const T b = u.dot(v);
-        const T d = u.dot(e0 - e2);
-        uv = (-d + b) / a;
-    } else {
-        log_and_throw_error(
-            "edge-edge dtype {} cannot handle!", static_cast<int>(dtype));
-    }
+    T uv = line_line_closest_point_pairs_uv<T>(e0, e1, e2, e3)(0);
 
     if (uv < 0.) {
         uv = 0.;

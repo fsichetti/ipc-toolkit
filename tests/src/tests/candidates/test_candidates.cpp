@@ -159,3 +159,33 @@ TEST_CASE("Plane-Vertex Candidate", "[candidates][plane-vertex]")
     CHECK(PlaneVertexCandidate(plane, 1) < PlaneVertexCandidate(plane, 2));
     CHECK(!(PlaneVertexCandidate(plane, 2) < PlaneVertexCandidate(plane, 1)));
 }
+
+TEST_CASE("Candidates adjacency sets", "[candidates]")
+{
+    // Vertex 2 is 0.05 above the middle of edge 0.
+    Eigen::MatrixXd V(4, 2);
+    V << 0, 0, 1, 0, 0.5, 0.05, 3, 3;
+    Eigen::MatrixXi E(2, 2);
+    E << 0, 1, 2, 3;
+    const CollisionMesh mesh(V, E, Eigen::MatrixXi());
+
+    // Before convert_candidates_to_sets(), every query is empty.
+    Candidates candidates;
+    CHECK(candidates.vv_set(mesh, 0).empty());
+    CHECK(candidates.ve_set(0).empty());
+    CHECK(candidates.vf_set(0).empty());
+    CHECK(candidates.ev_set(mesh, 0).empty());
+    CHECK(candidates.ee_set(mesh, 0).empty());
+    CHECK(candidates.ef_set(mesh, 0).empty());
+    CHECK(candidates.fv_set(mesh, 0).empty());
+    CHECK(candidates.fe_set(mesh, 0).empty());
+    CHECK(candidates.ff_set(mesh, 0).empty());
+
+    candidates.build(mesh, V, /*inflation_radius=*/0.1);
+    REQUIRE(!candidates.ev_candidates.empty());
+    candidates.convert_candidates_to_sets();
+    // In 2D, vv_set also holds the endpoints of the edges near the vertex.
+    CHECK(candidates.vv_set(mesh, 2) == std::set<index_t> { 0, 1 });
+    CHECK(candidates.ve_set(2).count(0) == 1);
+    CHECK(candidates.vf_set(2).empty());
+}

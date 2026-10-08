@@ -457,6 +457,26 @@ ESPFrictionSceneData3D esp_friction_scene_generator_3d(double d)
         upper_vertices = { 0, 5, 6, 7 };
     }
 
+    SECTION("edge-edge")
+    {
+        // Edge (0,1) of the upper tetrahedron, along x, crosses above edge
+        // (4,5) of the lower tetrahedron, along z, at distance d. Every vertex
+        // is farther than 2d from the other tetrahedron.
+        X.resize(8, 3);
+        F.resize(8, 3);
+        X << -1, d, 0,    // 0: upper edge v0
+            1, d, 0,      // 1: upper edge v1
+            0, d + 1, 1,  // 2: upper manifold
+            0, d + 1, -1, // 3
+            0, 0, -1,     // 4: lower edge v0
+            0, 0, 1,      // 5: lower edge v1
+            1, -1, 0,     // 6: lower manifold
+            -1, -1, 0;    // 7
+        F << 0, 1, 2, 0, 3, 1, 0, 2, 3, 1, 3, 2, 4, 6, 5, 4, 5, 7, 4, 7, 6, 5,
+            6, 7;
+        upper_vertices = { 0, 1, 2, 3 };
+    }
+
     igl::edges(F, E);
     return data;
 }

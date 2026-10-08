@@ -57,7 +57,8 @@ public:
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices) const;
 
-    /// @brief Convert contact pairs to string
+    /// @brief Convert contact pairs to string. Vertex pairs also list their
+    ///        squared distance, potential and gradient norm at vertices.
     std::string to_string(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,

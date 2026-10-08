@@ -33,11 +33,6 @@ void ESPCollisionsBuilder<2>::build_edge_collisions(
     for (size_t edge_idx = start; edge_idx < end; ++edge_idx) {
         const index_t ei = static_cast<index_t>(edge_idx);
 
-        if (candidates.ev_set(mesh, ei).empty()
-            && candidates.ee_set(mesh, ei).empty()) {
-            continue;
-        }
-
         if (params.integration_type == IntegrationType::NO_OBST
             && mesh.is_obstacle_edge(ei)) {
             continue;
@@ -157,13 +152,8 @@ ESPCollisionsBuilder<3>::reduce_point_triangle_collision(
         return std::make_shared<ESPCollisionTemplate<Edge3P1, Vertex3>>(
             e2, vi, mesh);
 
-    case PointTriangleDistanceType::P_T:
-        return std::make_shared<ESPCollisionTemplate<Face3P1, Vertex3>>(
-            fi, vi, mesh);
-
-    case PointTriangleDistanceType::AUTO:
-    default:
-        assert(false);
+    default: // AUTO was resolved above
+        assert(dtype == PointTriangleDistanceType::P_T);
         return std::make_shared<ESPCollisionTemplate<Face3P1, Vertex3>>(
             fi, vi, mesh);
     }
@@ -201,11 +191,8 @@ ESPCollisionsBuilder<3>::reduce_point_edge_collision(
     case PointEdgeDistanceType::P_E1:
         return std::make_shared<ESPCollisionTemplate<Vertex3, Vertex3>>(
             t1, vi, mesh);
-    case PointEdgeDistanceType::P_E:
-        return std::make_shared<ESPCollisionTemplate<Edge3P1, Vertex3>>(
-            ei, vi, mesh);
-    default:
-        assert(false);
+    default: // AUTO was resolved above
+        assert(dtype == PointEdgeDistanceType::P_E);
         return std::make_shared<ESPCollisionTemplate<Edge3P1, Vertex3>>(
             ei, vi, mesh);
     }
@@ -225,54 +212,14 @@ QuadratureCollisionsBuilder::QuadratureCollisionsBuilder(
 
 QuadratureCollisionsBuilder::~QuadratureCollisionsBuilder() = default;
 
+// TBB copies only the empty exemplar into each thread's builder.
 QuadratureCollisionsBuilder::QuadratureCollisionsBuilder(
     const QuadratureCollisionsBuilder& other)
+    : point_potential(other.point_potential)
 {
-    point_potential = other.point_potential;
-    vertex_collisions.clear();
-    for (const auto& cc : other.vertex_collisions) {
-        vertex_collisions.push_back(
-            std::make_unique<ESPCollisionDict<PointType::VERTEX>>(*cc));
-    }
-    edge_edge_collisions.clear();
-    for (const auto& cc : other.edge_edge_collisions) {
-        edge_edge_collisions.push_back(
-            std::make_unique<ESPCollisionDict<PointType::EDGE>>(*cc));
-    }
-    face_collisions.clear();
-    for (const auto& [fi, dicts] : other.face_collisions) {
-        std::vector<std::unique_ptr<ESPCollisionDict<PointType::FACE>>> copied;
-        for (const auto& d : dicts) {
-            copied.push_back(
-                std::make_unique<ESPCollisionDict<PointType::FACE>>(*d));
-        }
-        face_collisions.push_back({ fi, std::move(copied) });
-    }
-}
-QuadratureCollisionsBuilder&
-QuadratureCollisionsBuilder::operator=(const QuadratureCollisionsBuilder& other)
-{
-    point_potential = other.point_potential;
-    vertex_collisions.clear();
-    for (const auto& cc : other.vertex_collisions) {
-        vertex_collisions.push_back(
-            std::make_unique<ESPCollisionDict<PointType::VERTEX>>(*cc));
-    }
-    edge_edge_collisions.clear();
-    for (const auto& cc : other.edge_edge_collisions) {
-        edge_edge_collisions.push_back(
-            std::make_unique<ESPCollisionDict<PointType::EDGE>>(*cc));
-    }
-    face_collisions.clear();
-    for (const auto& [fi, dicts] : other.face_collisions) {
-        std::vector<std::unique_ptr<ESPCollisionDict<PointType::FACE>>> copied;
-        for (const auto& d : dicts) {
-            copied.push_back(
-                std::make_unique<ESPCollisionDict<PointType::FACE>>(*d));
-        }
-        face_collisions.push_back({ fi, std::move(copied) });
-    }
-    return *this;
+    assert(other.vertex_collisions.empty());
+    assert(other.edge_edge_collisions.empty());
+    assert(other.face_collisions.empty());
 }
 
 void QuadratureCollisionsBuilder::build_vertex_collisions(
@@ -389,24 +336,6 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
     const ESPParameters& params = point_potential->params;
     const CollisionMesh& mesh = point_potential->mesh;
 
-    // Returns true if edge e (which is an obstacle) has at least one
-    // non-obstacle candidate. Used in NORMAL mode to skip placing a QP on an
-    // obstacle edge with only obstacle candidates.
-    auto obstacle_edge_has_non_obstacle_candidates = [&](index_t e) -> bool {
-        const auto v_set = point_potential->candidates.ev_set(mesh, e);
-        const auto e_set = point_potential->candidates.ee_set(mesh, e);
-        const auto f_set = point_potential->candidates.ef_set(mesh, e);
-        return std::any_of(
-                   v_set.begin(), v_set.end(),
-                   [&](index_t v) { return !mesh.is_obstacle_vertex(v); })
-            || std::any_of(
-                   e_set.begin(), e_set.end(),
-                   [&](index_t e2) { return !mesh.is_obstacle_edge(e2); })
-            || std::any_of(f_set.begin(), f_set.end(), [&](index_t f) {
-                   return !mesh.is_obstacle_face(f);
-               });
-    };
-
     for (size_t i = start_i; i < end_i; i++) {
         const auto& candidate = ee_candidates[i];
         const index_t ei = candidate.edge0_id;
@@ -444,23 +373,20 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             continue;
         }
 
-        // ESPPotential only ever evaluates dicts whose stored
-        // dtype is EA_EB (see the `if (dtype != EA_EB) continue;` guards in
-        // esp_potential.cpp). All other edge-edge distance
-        // types are captured through vertex_collisions at the relevant
-        // endpoint, so building EA_EB0/EA_EB1/EA0_EB/EA1_EB dicts here is
-        // dead work.
+        // Only EA_EB pairs get an edge-edge dict; ESPPotential and the ESP
+        // friction build assert this. All other edge-edge distance types are
+        // captured through vertex_collisions at the relevant endpoint.
         if (dtype != EdgeEdgeDistanceType::EA_EB) {
             continue;
         }
 
+        // Outside BRUTE_FORCE, at most one of the two edges is an obstacle
+        // (see above), so an obstacle edge always has a dynamic candidate and
+        // only NO_OBST skips it.
         const bool ei_is_obs = mesh.is_obstacle_edge(ei);
         const bool ej_is_obs = mesh.is_obstacle_edge(ej);
 
-        if ((params.integration_type != IntegrationType::NO_OBST || !ei_is_obs)
-            && (!ei_is_obs
-                || params.integration_type == IntegrationType::BRUTE_FORCE
-                || obstacle_edge_has_non_obstacle_candidates(ei))) {
+        if (params.integration_type != IntegrationType::NO_OBST || !ei_is_obs) {
             size_t n = 0;
             auto dict =
                 point_potential->build_collisions_at_edge_edge_closest_point(
@@ -475,10 +401,7 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             num_collision_pairs += n;
         }
 
-        if ((params.integration_type != IntegrationType::NO_OBST || !ej_is_obs)
-            && (!ej_is_obs
-                || params.integration_type == IntegrationType::BRUTE_FORCE
-                || obstacle_edge_has_non_obstacle_candidates(ej))) {
+        if (params.integration_type != IntegrationType::NO_OBST || !ej_is_obs) {
             size_t n = 0;
             auto dict =
                 point_potential->build_collisions_at_edge_edge_closest_point(

@@ -791,3 +791,31 @@ TEST_CASE(
             point_triangle_distance_type(c.p, c.t0, c.t1, c.t2) == c.expected);
     }
 }
+
+TEST_CASE(
+    "Exact distance types with the standard classifiers",
+    "[distance][distance-type]")
+{
+    // Restore the default even if a check fails.
+    struct Restore {
+        ~Restore() { DistanceTypeConfig::instance().set_use_standard(false); }
+    } restore;
+    DistanceTypeConfig::instance().set_use_standard(true);
+    REQUIRE(DistanceTypeConfig::instance().use_standard());
+
+    for (int i = 0; i < 100; ++i) {
+        const Eigen::Vector3d p = Eigen::Vector3d::Random(),
+                              a = Eigen::Vector3d::Random(),
+                              b = Eigen::Vector3d::Random(),
+                              c = Eigen::Vector3d::Random();
+        CHECK(
+            point_edge_distance_type_exact(p, a, b)
+            == point_edge_distance_type(p, a, b));
+        CHECK(
+            point_triangle_distance_type_exact(p, a, b, c)
+            == point_triangle_distance_type(p, a, b, c));
+        CHECK(
+            edge_edge_distance_type_exact(p, a, b, c)
+            == edge_edge_distance_type(p, a, b, c));
+    }
+}

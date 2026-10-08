@@ -760,6 +760,7 @@ void check_esp_friction_force_jacobian(
     // Check: force = -grad
     const Eigen::VectorXd force =
         D.gcp_force(friction_collisions, mesh, X, Ut, velocities);
+    REQUIRE(force.norm() > 0);
     const Eigen::VectorXd grad_D =
         D.gradient(friction_collisions, mesh, velocities);
     CHECK((force + grad_D).norm() <= 1e-8 * force.norm());
@@ -881,6 +882,90 @@ TEST_CASE("ESP friction force jacobian 3D", "[friction-esp][force-jacobian]")
     };
     run_check({ 0.05, 0, 0 }); // slide_x
     run_check({ 0, 0, 0.05 }); // slide_z
+}
+
+TEST_CASE(
+    "ESP friction force jacobian 3D two cubes",
+    "[friction-esp][force-jacobian]")
+{
+    Eigen::MatrixXd X;
+    Eigen::MatrixXi E, F;
+    REQUIRE(tests::load_mesh("two-cubes-close.ply", X, E, F));
+    const CollisionMesh mesh(X, E, F);
+    const ESPParameters params(0.1, 1.0, 0);
+    const bool normalize_weights = GENERATE(true, false);
+
+    ESPCollisions collisions;
+    collisions.build(mesh, X, params);
+    REQUIRE(!collisions.empty());
+
+    // The edge-edge pairs give vertex-vertex, edge-vertex and face-vertex
+    // sub-collisions, which become edge-vertex, edge-edge and face-vertex
+    // friction stencils.
+    const Eigen::VectorXd mu = Eigen::VectorXd::Ones(X.rows());
+    TangentialCollisions friction_collisions;
+    friction_collisions.build(
+        mesh, X, collisions, params, 1.0, mu, mu, normalize_weights);
+    CHECK(!friction_collisions.ev_collisions.empty());
+    CHECK(!friction_collisions.ee_collisions.empty());
+    CHECK(!friction_collisions.fv_collisions.empty());
+
+    // Slide the second cube along y.
+    const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+    Eigen::MatrixXd U = Ut;
+    for (int i = 0; i < X.rows(); i++) {
+        if (X(i, 0) > 0.96) {
+            U(i, 1) = 0.05;
+        }
+    }
+    check_esp_friction_force_jacobian(
+        mesh, Ut, U, collisions, /*mu=*/1., /*epsv_times_h=*/1., params,
+        /*normal_stiffness=*/1., normalize_weights);
+}
+
+TEST_CASE("ESP friction with zero normal stiffness", "[friction-esp]")
+{
+    // Every stencil has zero normal force, so none is kept.
+    SECTION("2D")
+    {
+        const ESPParameters params(0.6, 1., 2);
+        Eigen::MatrixXd V(8, 2);
+        Eigen::MatrixXi E(8, 2), F;
+        V << -1., 1., -1., 0., -.1, 0., -.1, 1., .1, 1., .1, 0., 1., 0., 1., 1.;
+        E << 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4;
+        const CollisionMesh mesh(
+            std::vector<bool>(V.rows(), true),
+            std::vector<bool>(V.rows(), false), V, E, F);
+
+        ESPCollisions collisions;
+        collisions.build(mesh, V, params);
+        REQUIRE(!collisions.empty());
+
+        const Eigen::VectorXd mu = Eigen::VectorXd::Ones(V.rows());
+        TangentialCollisions friction_collisions;
+        friction_collisions.build(
+            mesh, V, collisions, params, /*normal_stiffness=*/0., mu, mu);
+        CHECK(friction_collisions.empty());
+    }
+
+    SECTION("3D")
+    {
+        const double dhat = 0.15;
+        const ESPFrictionSceneData3D scene =
+            esp_friction_scene_generator_3d(dhat * 0.5);
+        const CollisionMesh mesh(scene.X, scene.E, scene.F);
+        const ESPParameters params(dhat, 1., 0);
+
+        ESPCollisions collisions;
+        collisions.build(mesh, scene.X, params);
+        REQUIRE(!collisions.empty());
+
+        const Eigen::VectorXd mu = Eigen::VectorXd::Ones(scene.X.rows());
+        TangentialCollisions friction_collisions;
+        friction_collisions.build(
+            mesh, scene.X, collisions, params, /*normal_stiffness=*/0., mu, mu);
+        CHECK(friction_collisions.empty());
+    }
 }
 TEST_CASE(
     "Smooth friction force no_mu and no_contact_force_multiplier",

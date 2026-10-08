@@ -18,7 +18,11 @@
 
 #include "ipc/esp/quadrature_potential.hpp"
 
+#include <ipc/distance/distance_type_exact.hpp>
+#include <ipc/distance/point_edge.hpp>
+#include <ipc/esp/collisions/esp_collision_template.hpp>
 #include <ipc/esp/collisions/esp_quadrature.hpp>
+#include <ipc/esp/collisions/vertex_matrix_view.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -101,8 +105,9 @@ std::pair<double, double> eigenvalue_range(const Eigen::SparseMatrix<double>& H)
 }
 
 /// Positive-weight face quadrature rules for the 3D face-quadrature tests:
-/// "vertices+centroid" (the three vertices and the centroid) or
-/// "interior-degree-2" (three interior points, exact for degree 2).
+/// "vertices+centroid" (the three vertices and the centroid),
+/// "interior-degree-2" (three interior points, exact for degree 2) or
+/// "edge-midpoints" (one point on each edge of the face).
 FaceQuadRule make_face_quad_rule(const std::string& name)
 {
     if (name == "vertices+centroid") {
@@ -111,6 +116,13 @@ FaceQuadRule make_face_quad_rule(const std::string& name)
             { { { 0., 1., 0. } }, 0.25 },
             { { { 0., 0., 1. } }, 0.25 },
             { { { 1. / 3, 1. / 3, 1. / 3 } }, 0.25 },
+        };
+    }
+    if (name == "edge-midpoints") {
+        return {
+            { { { 0., .5, .5 } }, 1. / 3 },
+            { { { .5, 0., .5 } }, 1. / 3 },
+            { { { .5, .5, 0. } }, 1. / 3 },
         };
     }
     REQUIRE(name == "interior-degree-2");
@@ -683,6 +695,270 @@ TEST_CASE(
     CHECK(potential_value(2) == Catch::Approx(expected).epsilon(1e-12));
 }
 
+TEST_CASE(
+    "ESP potential without edge-edge terms",
+    "[esp_potential], [esp_potential_3d]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E, F;
+    REQUIRE(tests::load_mesh("two-cubes-close.ply", V, E, F));
+    const CollisionMesh mesh(V, E, F);
+
+    // dbar_factor = 0 drops the edge-edge terms, so every face's total weight
+    // is that of its three vertices, 3, and the normalized potential is the
+    // unnormalized one divided by 3.
+    const ESPParameters params(0.15, 0.0);
+    ESPCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    const ESPPotential normalized(params, /*use_near_far=*/true);
+    const ESPPotential unnormalized(params, /*use_near_far=*/false);
+
+    const double energy = unnormalized(collisions, mesh, V);
+    REQUIRE(energy > 0);
+    CHECK(
+        normalized(collisions, mesh, V)
+        == Catch::Approx(energy / 3).epsilon(1e-12));
+
+    const Eigen::VectorXd grad = unnormalized.gradient(collisions, mesh, V);
+    CHECK(
+        (normalized.gradient(collisions, mesh, V) - grad / 3).norm()
+        <= 1e-12 * grad.norm());
+
+    const Eigen::SparseMatrix<double> hess =
+        unnormalized.hessian(collisions, mesh, V);
+    CHECK(
+        (normalized.hessian(collisions, mesh, V) - hess / 3).norm()
+        <= 1e-12 * hess.norm());
+}
+
+TEST_CASE("ESP potential on a 3D mesh without faces", "[esp_potential]")
+{
+    // Two crossing segments 0.05 apart: an edge-edge pair but no faces.
+    Eigen::MatrixXd V(4, 3);
+    V << -1, 0, 0, 1, 0, 0, 0, -1, 0.05, 0, 1, 0.05;
+    Eigen::MatrixXi E(2, 2);
+    E << 0, 1, 2, 3;
+    const CollisionMesh mesh(V, E, Eigen::MatrixXi(0, 3));
+
+    const ESPParameters params(0.1, 1.0);
+    ESPCollisions collisions;
+    collisions.build(mesh, V, params);
+    REQUIRE(!collisions.empty());
+
+    const ESPPotential potential(params);
+    CHECK(potential.gradient(collisions, mesh, V).size() == V.size());
+    const Eigen::SparseMatrix<double> hess =
+        potential.hessian(collisions, mesh, V);
+    CHECK(hess.rows() == V.size());
+    CHECK(hess.cols() == V.size());
+}
+
+TEST_CASE("ESP collisions accessors", "[esp_potential], [esp_potential_3d]")
+{
+    SECTION("edge-edge")
+    {
+        // Edges (0,1) and (4,5) cross 0.01 apart.
+        Eigen::MatrixXd V;
+        Eigen::MatrixXi E, F;
+        build_ee_limit_geometry(0.25, V, E, F);
+        const CollisionMesh mesh(V, E, F);
+        const ESPParameters params(0.1, 1.0, 0);
+
+        ESPCollisions collisions;
+        CHECK(collisions.empty());
+        CHECK(collisions.size() == 0);
+        CHECK(
+            collisions.compute_minimum_distance(mesh, V)
+            == std::numeric_limits<double>::infinity());
+        CHECK(collisions.to_string(mesh, V, params).empty());
+
+        collisions.build(mesh, V, params);
+        REQUIRE(!collisions.empty());
+        CHECK(collisions.size() > 0);
+        CHECK(collisions.n_candidates() > 0);
+        // compute_minimum_distance returns the squared distance.
+        CHECK(
+            collisions.compute_minimum_distance(mesh, V)
+            == Catch::Approx(1e-4));
+        CHECK(
+            collisions.to_string(mesh, V, params).find("edge [")
+            != std::string::npos);
+
+        collisions.clear();
+        CHECK(collisions.empty());
+        CHECK(collisions.size() == 0);
+    }
+
+    SECTION("vertex and face")
+    {
+        // Two unit cubes 0.001 apart with aligned vertices.
+        Eigen::MatrixXd V_cube;
+        Eigen::MatrixXi E_cube, F_cube;
+        REQUIRE(tests::load_mesh("cube.ply", V_cube, E_cube, F_cube));
+        const int n = V_cube.rows();
+        Eigen::MatrixXd V(2 * n, 3);
+        V << V_cube, V_cube.rowwise() + Eigen::RowVector3d(1.001, 0, 0);
+        Eigen::MatrixXi F(2 * F_cube.rows(), 3);
+        F << F_cube, (F_cube.array() + n).matrix();
+        Eigen::MatrixXi E;
+        igl::edges(F, E);
+        const CollisionMesh mesh(V, E, F);
+
+        ESPParameters params(0.5, 1.0, 0);
+        ESPCollisions collisions;
+        collisions.build(mesh, V, params);
+        REQUIRE(!collisions.empty());
+        CHECK(
+            collisions.to_string(mesh, V, params).find("vert [")
+            != std::string::npos);
+        CHECK(
+            collisions.compute_minimum_distance(mesh, V)
+            == Catch::Approx(1e-6));
+
+        params.set_quad_rule(make_face_quad_rule("vertices+centroid"));
+        collisions.build(mesh, V, params);
+        REQUIRE(!collisions.empty());
+        CHECK(
+            collisions.to_string(mesh, V, params).find("face [")
+            != std::string::npos);
+    }
+}
+
+TEST_CASE(
+    "ESP collisions skip adjacent edge-edge candidates",
+    "[esp_potential], [esp_potential_3d]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E, F;
+    build_ee_limit_geometry(0.25, V, E, F);
+    const CollisionMesh mesh(V, E, F);
+    const ESPParameters params(0.1, 1.0, 0);
+
+    // Edges 0 and 1 share vertex 0; broad phases never emit such a pair.
+    REQUIRE(E(0, 0) == E(1, 0));
+    Candidates candidates;
+    candidates.ee_candidates.emplace_back(0, 1);
+    ESPCollisions collisions;
+    collisions.build(candidates, mesh, V, params);
+    CHECK(collisions.empty());
+
+    // Edges (0,1) and (4,5) cross, so their pair is kept.
+    REQUIRE(E(6, 0) == 4);
+    REQUIRE(E(6, 1) == 5);
+    candidates.ee_candidates = { EdgeEdgeCandidate(0, 6) };
+    collisions.build(candidates, mesh, V, params);
+    CHECK(!collisions.empty());
+}
+
+TEST_CASE("ESP collision dict index out of range", "[esp_potential]")
+{
+    ESPCollisionDict<PointType::VERTEX> dict;
+    CHECK(dict.size() == 0);
+    CHECK_THROWS_AS(dict[0], std::runtime_error);
+    const auto& const_dict = dict;
+    CHECK_THROWS_AS(const_dict[0], std::runtime_error);
+}
+
+TEST_CASE("ESP collision stencils", "[esp_potential]")
+{
+    constexpr double NONE = std::numeric_limits<double>::max();
+
+    SECTION("3D")
+    {
+        Eigen::MatrixXd V(4, 3);
+        V << 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0.2, 0.5;
+        Eigen::MatrixXi F(1, 3);
+        F << 0, 1, 2;
+        Eigen::MatrixXi E;
+        igl::edges(F, E);
+        const CollisionMesh mesh(V, E, F);
+
+        const ESPCollisionTemplate<Vertex3, Vertex3> vv(3, 0, mesh);
+        const ESPCollisionTemplate<Edge3P1, Vertex3> ev(0, 3, mesh);
+        const ESPCollisionTemplate<Face3P1, Vertex3> fv(0, 3, mesh);
+        CHECK(vv.name() == "vv_3d");
+        CHECK(ev.name() == "ev_3d");
+        CHECK(fv.name() == "fv_3d");
+        CHECK(ev.n_vertices_a() == 2);
+
+        CHECK(
+            vv.compute_distance(V)
+            == Catch::Approx((V.row(3) - V.row(0)).squaredNorm()));
+        CHECK(
+            ev.compute_distance(V)
+            == Catch::Approx(point_edge_distance(
+                V.row(3).transpose(), V.row(E(0, 0)).transpose(),
+                V.row(E(0, 1)).transpose())));
+        CHECK(fv.compute_distance(V) == Catch::Approx(0.25));
+        // Without vertex 3 there is no distance to report.
+        for (const ESPCollision* c :
+             std::initializer_list<const ESPCollision*> { &vv, &ev, &fv }) {
+            CHECK(c->compute_distance(V.topRows(3)) == NONE);
+        }
+
+        CHECK_THROWS_AS(vv[2], std::runtime_error);
+        CHECK_THROWS_AS(
+            vv.dof(Eigen::MatrixXd::Zero(4, 4)), std::runtime_error);
+        CHECK_THROWS_AS(
+            VertexMatrixView<3>(Eigen::MatrixXd::Zero(2, 2)),
+            std::runtime_error);
+        CHECK_THROWS_AS(
+            VertexMatrixView<3>(
+                Eigen::MatrixXd::Zero(2, 3), Eigen::MatrixXd::Zero(1, 2)),
+            std::runtime_error);
+    }
+
+    SECTION("2D")
+    {
+        Eigen::MatrixXd V(3, 2);
+        V << 0, 0, 1, 0, 0.5, 0.3;
+        Eigen::MatrixXi E(1, 2);
+        E << 0, 1;
+        const CollisionMesh mesh(V, E, Eigen::MatrixXi());
+
+        const ESPCollisionTemplate<Vertex2, Vertex2> vv(2, 0, mesh);
+        const ESPCollisionTemplate<Vertex2, Edge2P1> ve(2, 0, mesh);
+        CHECK(vv.name() == "vv_2d_pt");
+        CHECK(ve.name() == "ev_2d_pt");
+        CHECK(vv.compute_distance(V) == Catch::Approx(0.34));
+        CHECK(ve.compute_distance(V) == Catch::Approx(0.09));
+        CHECK(vv.compute_distance(V.topRows(2)) == NONE);
+        CHECK(ve.compute_distance(V.topRows(2)) == NONE);
+
+        Eigen::VectorXd expected(6);
+        expected << 0.5, 0.3, 0, 0, 1, 0;
+        CHECK(ve.dof(V) == expected);
+    }
+}
+
+TEST_CASE("ESP edge-edge distance helpers", "[esp_potential]")
+{
+    const Eigen::Vector3d ea0(0, 0, 0), ea1(1, 0, 0);
+
+    // Parallel edges 0.1 apart, where the line-line distance divides by zero.
+    const Eigen::Vector3d eb0(0.25, 0.1, 0), eb1(0.75, 0.1, 0);
+    CHECK(
+        edge_edge_distance_parallel_safe(
+            ea0, ea1, eb0, eb1, EdgeEdgeDistanceType::EA_EB)
+        == Catch::Approx(0.01));
+
+    // Nearly parallel edges that the exact classifier calls EA_EB.
+    const Eigen::Vector3d fb0(0.25, -1e-12, 0.1), fb1(0.75, 1e-12, 0.1);
+    const EdgeEdgeDistanceType dtype =
+        edge_edge_distance_type_exact(ea0, ea1, fb0, fb1);
+    CHECK(dtype == EdgeEdgeDistanceType::EA_EB);
+    CHECK(
+        edge_edge_distance_parallel_safe(ea0, ea1, fb0, fb1, dtype)
+        == Catch::Approx(0.01));
+
+    // The closest point on edge A is clamped to the edge.
+    const Eigen::Vector3d gb0(2, -1, 1), gb1(2, 1, 1);
+    const Eigen::Vector3d hb0(-1, -1, 1), hb1(-1, 1, 1);
+    CHECK(closest_point_uv<double>(ea0, ea1, gb0, gb1) == 1.0);
+    CHECK(closest_point_uv<double>(ea0, ea1, hb0, hb1) == 0.0);
+}
+
 TEST_CASE("ESP parameters dbar_factor range", "[esp_potential]")
 {
     CHECK_NOTHROW(ESPParameters(0.1, 0.0));
@@ -760,7 +1036,7 @@ TEST_CASE("ESP face quadrature rule validation", "[esp_potential]")
 TEST_CASE("ESP 2D Gauss-Lobatto weights are positive", "[esp_potential]")
 {
     // quad_order n selects the (n + 1)-point Gauss-Lobatto rule, tabulated up
-    // to 19 points and computed beyond, so ESPParameters accepts any order.
+    // to 20 points and computed beyond, so ESPParameters accepts any order.
     for (int order = 1; order <= 25; order++) {
         CAPTURE(order);
         CHECK_NOTHROW(ESPParameters(0.1, 0.2, order));
@@ -775,6 +1051,12 @@ TEST_CASE("ESP 2D Gauss-Lobatto weights are positive", "[esp_potential]")
         }
         CHECK(sum == Catch::Approx(1.0).epsilon(1e-12));
     }
+
+    // A rule needs at least two points.
+    CHECK_THROWS_AS(GaussLobatto::get_rule(0), std::runtime_error);
+    std::vector<double> x, w;
+    CHECK_THROWS_AS(lobatto_compute(0, x, w), std::runtime_error);
+    CHECK_THROWS_AS(lobatto_set(1, x, w), std::domain_error);
 }
 
 TEST_CASE(
@@ -1079,6 +1361,11 @@ TEST_CASE(
                     1e-9));
         }
 
+        // Each quadrature point's Hessian is projected, so their sum is PSD.
+        const auto [lambda_min, lambda_max] = eigenvalue_range(
+            potential.hessian(collisions, mesh, V, PSDProjectionMethod::CLAMP));
+        CHECK(lambda_min >= -std::max(1e-10, 1e-10 * std::abs(lambda_max)));
+
         if (!check_hessian) {
             return;
         }
@@ -1166,8 +1453,9 @@ TEST_CASE(
 // 3D FACE QUADRATURE TESTS //
 
 // Verify that face quadrature gives gradient/hessian consistent with finite
-// differences on the wrapped-sphere geometry, for two positive-weight face
-// quadrature rules (params.set_quad_rule()).
+// differences on the wrapped-sphere geometry, for three positive-weight face
+// quadrature rules (params.set_quad_rule()). The edge-midpoint rule puts each
+// point on an edge, which skips the face across that edge.
 TEST_CASE(
     "Face Quadrature Gradient and Hessian",
     "[esp_potential], [esp_potential_3d]")
@@ -1177,8 +1465,9 @@ TEST_CASE(
     CollisionMesh& mesh = data.mesh;
 
     const double dhat = 0.15;
-    const std::string rule_name =
-        GENERATE(as<std::string>(), "vertices+centroid", "interior-degree-2");
+    const std::string rule_name = GENERATE(
+        as<std::string>(), "vertices+centroid", "interior-degree-2",
+        "edge-midpoints");
     CAPTURE(rule_name);
     ESPParameters params(dhat, 1.);
     params.set_quad_rule(make_face_quad_rule(rule_name));
@@ -1320,6 +1609,11 @@ TEST_CASE("NearFarBarrier decomposition", "[esp_potential][barrier]")
                     + nf.second_derivative_far(d, dhat)
                 == Catch::Approx(ddb));
 
+            // The unsplit evaluation forwards to the base barrier.
+            CHECK(nf(d, dhat) == b);
+            CHECK(nf.first_derivative(d, dhat) == db);
+            CHECK(nf.second_derivative(d, dhat) == ddb);
+
             CAPTURE(d);
             CAPTURE(alpha);
             CAPTURE(dhat);
@@ -1340,6 +1634,7 @@ TEST_CASE("NearFarBarrier decomposition", "[esp_potential][barrier]")
                 CHECK(nf.far_value(d, dhat) > 0.0);
             }
         }
+        CHECK(nf.units(dhat) == base.units(dhat));
     };
 
     switch (type) {

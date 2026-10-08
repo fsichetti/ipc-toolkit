@@ -163,11 +163,8 @@ double ESPPotential::operator()(
                                        .edge_edge_collisions.end()) {
 
                                 const auto dtype = iter->second->ee_dtype();
-
-                                // Skip non EA_EB collision types
-                                if (dtype != EdgeEdgeDistanceType::EA_EB) {
-                                    continue;
-                                }
+                                // The builder keeps only EA_EB pairs.
+                                assert(dtype == EdgeEdgeDistanceType::EA_EB);
 
                                 const double dist =
                                     sqrt(edge_edge_distance_parallel_safe(
@@ -175,8 +172,7 @@ double ESPPotential::operator()(
                                         X.row(ed), dtype));
 
                                 const double uv = closest_point_uv<double>(
-                                    X.row(ea), X.row(eb), X.row(ec), X.row(ed),
-                                    dtype);
+                                    X.row(ea), X.row(eb), X.row(ec), X.row(ed));
 
                                 const Eigen::RowVector3d ee_closest_point =
                                     uv * (X.row(eb) - X.row(ea)) + X.row(ea);
@@ -304,17 +300,13 @@ double ESPPotential::operator()(
                     }
 
                     if (use_nf) {
+                        // The face's own vertices or quadrature points always
+                        // add a positive weight to both totals.
                         assert(total_w_near >= total_w_far - 1e-14);
-                        if (total_w_far == 0) {
-                            assert(total_p_far == 0);
-                        }
-                        if (total_w_near > 0 && total_w_far > 0) {
-                            total += w
-                                * (total_p_near / total_w_near
-                                   + total_p_far / total_w_far);
-                        } else if (total_w_near > 0) {
-                            total += w * (total_p_near / total_w_near);
-                        }
+                        assert(total_w_far > 0);
+                        total += w
+                            * (total_p_near / total_w_near
+                               + total_p_far / total_w_far);
                     } else if (use_near_far) {
                         assert(total_w > 0);
                         total += w * (total_p / total_w);
@@ -429,10 +421,8 @@ Eigen::VectorXd ESPPotential::gradient(
                     std::vector<EEGradEntry> ee_cache;
                     std::vector<ConstGradEntry> const_cache;
                     double total_w = 0;
-                    double total_p = 0;
                     double total_w_near = 0, total_p_near = 0;
                     double total_w_far = 0;
-                    [[maybe_unused]] double total_p_far = 0; // asserts only
 
                     std::unique_ptr<NearFarBarrier> nf_barrier;
                     if (use_nf_grad) {
@@ -468,11 +458,8 @@ Eigen::VectorXd ESPPotential::gradient(
                                        .edge_edge_collisions.end()) {
 
                                 const auto dtype = iter->second->ee_dtype();
-
-                                // Skip non EA_EB collision types
-                                if (dtype != EdgeEdgeDistanceType::EA_EB) {
-                                    continue;
-                                }
+                                // The builder keeps only EA_EB pairs.
+                                assert(dtype == EdgeEdgeDistanceType::EA_EB);
 
                                 Eigen::Vector<double, 12> positions;
                                 positions << X.row(ea).transpose(),
@@ -484,15 +471,13 @@ Eigen::VectorXd ESPPotential::gradient(
                                     slice_positions<T, 4, 3>(positions);
 
                                 const T dist = sqrt(
-                                    edge_edge_sqr_distance<T>(
+                                    line_line_sqr_distance<T>(
                                         positionsT.row(0), positionsT.row(1),
-                                        positionsT.row(2), positionsT.row(3),
-                                        dtype));
+                                        positionsT.row(2), positionsT.row(3)));
 
                                 const T uv = closest_point_uv<T>(
                                     positionsT.row(0), positionsT.row(1),
-                                    positionsT.row(2), positionsT.row(3),
-                                    dtype);
+                                    positionsT.row(2), positionsT.row(3));
 
                                 const Eigen::RowVector3<T> ee_closest_point_T =
                                     uv * (positionsT.row(1) - positionsT.row(0))
@@ -503,10 +488,9 @@ Eigen::VectorXd ESPPotential::gradient(
                                         ee_closest_point_T(1).val,
                                         ee_closest_point_T(2).val);
 
-                                const T dist_sqr = edge_edge_sqr_distance<T>(
+                                const T dist_sqr = line_line_sqr_distance<T>(
                                     positionsT.row(0), positionsT.row(1),
-                                    positionsT.row(2), positionsT.row(3),
-                                    dtype);
+                                    positionsT.row(2), positionsT.row(3));
                                 const auto mtypes = edge_edge_mollifier_type(
                                     X.row(ea).transpose(),
                                     X.row(eb).transpose(),
@@ -567,7 +551,6 @@ Eigen::VectorXd ESPPotential::gradient(
                                     { &dict, mollifier.val, mollifier.grad, P,
                                       grad_p });
                                 total_w += mollifier.val;
-                                total_p += mollifier.val * P;
                                 if (use_nf_grad) {
                                     total_w_near += mollifier.val;
                                     total_p_near += mollifier.val * P;
@@ -614,7 +597,6 @@ Eigen::VectorXd ESPPotential::gradient(
                                             qp_weight_scale * P_n,
                                             qp_weight_scale * P_f });
                                     total_p_near += qp_weight_scale * P_n;
-                                    total_p_far += qp_weight_scale * P_f;
                                 } else {
                                     const double P = PointPotentialHelper::
                                         evaluate_potential_at_face_center_with_cached_collisions(
@@ -629,7 +611,6 @@ Eigen::VectorXd ESPPotential::gradient(
                                             qp_weight_scale * grad_p,
                                             Eigen::VectorXd::Zero(0),
                                             qp_weight_scale * P, 0 });
-                                    total_p += qp_weight_scale * P;
                                 }
                             }
                         }
@@ -661,7 +642,6 @@ Eigen::VectorXd ESPPotential::gradient(
                                             &(*iter->second).dofs(), grad_n,
                                             grad_f, P_n, P_f });
                                     total_p_near += P_n;
-                                    total_p_far += P_f;
                                 } else {
                                     const double P = PointPotentialHelper::
                                         evaluate_potential_at_vertex_with_cached_collisions(
@@ -674,7 +654,6 @@ Eigen::VectorXd ESPPotential::gradient(
                                         ConstGradEntry {
                                             &(*iter->second).dofs(), grad_p,
                                             Eigen::VectorXd::Zero(0), P, 0 });
-                                    total_p += P;
                                 }
                             }
                         }
@@ -683,9 +662,7 @@ Eigen::VectorXd ESPPotential::gradient(
                     // Pass 2: apply gradient
                     if (use_nf_grad) {
                         assert(total_w_near > 0);
-                        if (total_w_far == 0) {
-                            assert(total_p_far == 0);
-                        }
+                        assert(total_w_far > 0);
                         const double avg_P_near = total_p_near / total_w_near;
                         for (const auto& e : ee_cache) {
                             grad(e.dict->dofs()) +=
@@ -695,27 +672,15 @@ Eigen::VectorXd ESPPotential::gradient(
                                 * e.mol_grad;
                         }
                         for (const auto& e : const_cache) {
-                            if (total_w_far > 0) {
-                                grad(*e.dofs) +=
-                                    (w / total_w_near) * e.grad_p_near
-                                    + (w / total_w_far) * e.grad_p_far;
-                            } else {
-                                grad(*e.dofs) +=
-                                    (w / total_w_near) * e.grad_p_near;
-                            }
+                            grad(*e.dofs) += (w / total_w_near) * e.grad_p_near
+                                + (w / total_w_far) * e.grad_p_far;
                         }
                     } else if (use_near_far) {
                         // Normalized but without NearFarBarrier splitting
                         // (only reached at dbar_factor = 0, which skips the
                         // edge-edge terms, so the weights are constant)
                         assert(total_w > 0);
-                        const double avg_P = total_p / total_w;
-                        for (const auto& e : ee_cache) {
-                            grad(e.dict->dofs()) +=
-                                (w / total_w * e.mol_val) * e.grad_p;
-                            grad(e.dict->primary_dofs()) +=
-                                (w / total_w * (e.P - avg_P)) * e.mol_grad;
-                        }
+                        assert(ee_cache.empty());
                         for (const auto& e : const_cache) {
                             grad(*e.dofs) += (w / total_w) * e.grad_p_near;
                         }
@@ -870,7 +835,6 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                     std::vector<EEHessEntry> ee_cache;
                     std::vector<ConstHessEntry> const_cache;
                     double total_w = 0;
-                    double total_p = 0;
                     double total_w_near = 0, total_p_near = 0;
                     double total_w_far = 0;
                     [[maybe_unused]] double total_p_far = 0; // asserts only
@@ -910,11 +874,8 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                        .edge_edge_collisions.end()) {
 
                                 const auto dtype = iter->second->ee_dtype();
-
-                                // Skip non EA_EB collision types
-                                if (dtype != EdgeEdgeDistanceType::EA_EB) {
-                                    continue;
-                                }
+                                // The builder keeps only EA_EB pairs.
+                                assert(dtype == EdgeEdgeDistanceType::EA_EB);
 
                                 Eigen::Vector<double, 12> positions;
                                 positions << X.row(ea).transpose(),
@@ -926,15 +887,13 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                     slice_positions<T, 4, 3>(positions);
 
                                 const T dist = sqrt(
-                                    edge_edge_sqr_distance<T>(
+                                    line_line_sqr_distance<T>(
                                         positionsT.row(0), positionsT.row(1),
-                                        positionsT.row(2), positionsT.row(3),
-                                        dtype));
+                                        positionsT.row(2), positionsT.row(3)));
 
                                 const T uv = closest_point_uv<T>(
                                     positionsT.row(0), positionsT.row(1),
-                                    positionsT.row(2), positionsT.row(3),
-                                    dtype);
+                                    positionsT.row(2), positionsT.row(3));
 
                                 const Eigen::RowVector3<T> ee_closest_point_T =
                                     uv * (positionsT.row(1) - positionsT.row(0))
@@ -945,10 +904,9 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                         ee_closest_point_T(1).val,
                                         ee_closest_point_T(2).val);
 
-                                const T dist_sqr = edge_edge_sqr_distance<T>(
+                                const T dist_sqr = line_line_sqr_distance<T>(
                                     positionsT.row(0), positionsT.row(1),
-                                    positionsT.row(2), positionsT.row(3),
-                                    dtype);
+                                    positionsT.row(2), positionsT.row(3));
                                 const auto mtypes = edge_edge_mollifier_type(
                                     X.row(ea).transpose(),
                                     X.row(eb).transpose(),
@@ -1052,7 +1010,6 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                       mollifier.Hess, P, grad_p,
                                       std::move(local_hess) });
                                 total_w += mollifier.val;
-                                total_p += mollifier.val * P;
                                 if (use_nf_hess) {
                                     total_w_near += mollifier.val;
                                     total_p_near += mollifier.val * P;
@@ -1137,7 +1094,6 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                     entry.grad_p_far = Eigen::VectorXd::Zero(0);
                                     entry.local_hess_far =
                                         Eigen::MatrixXd::Zero(0, 0);
-                                    total_p += entry.p_near;
                                 }
                                 const_cache.push_back(std::move(entry));
                             }
@@ -1195,7 +1151,6 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                                     entry.grad_p_far = Eigen::VectorXd::Zero(0);
                                     entry.local_hess_far =
                                         Eigen::MatrixXd::Zero(0, 0);
-                                    total_p += entry.p_near;
                                 }
                                 const_cache.push_back(std::move(entry));
                             }
@@ -1464,74 +1419,15 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
                             }
                         }
                     } else if (use_near_far) {
-                        // Normalized (use_near_far=true) but without
-                        // NearFarBarrier splitting (only reached at
-                        // dbar_factor = 0: no edge-edge terms, so B = C = 0)
+                        // Normalized but without NearFarBarrier splitting
+                        // (only reached at dbar_factor = 0, which skips the
+                        // edge-edge terms, so the weights are constant)
                         assert(total_w > 0);
-                        const double avg_P = total_p / total_w;
-                        const double scale_C = -(w / (total_w * total_w));
-
-                        auto add_sym_correction_norm =
-                            [&](const std::vector<index_t>& g_dofs,
-                                const Eigen::Ref<const Eigen::VectorXd>& g_vec,
-                                const std::vector<index_t>& gradz_dofs,
-                                const Eigen::Ref<const Eigen::VectorXd>&
-                                    gradz_vec) {
-                                for (int a = 0;
-                                     a < static_cast<int>(g_dofs.size()); a++) {
-                                    for (int b = 0; b
-                                         < static_cast<int>(gradz_dofs.size());
-                                         b++) {
-                                        const double v =
-                                            scale_C * g_vec[a] * gradz_vec[b];
-                                        hess_triplets.cache->add_value(
-                                            0, g_dofs[a], gradz_dofs[b], v);
-                                        hess_triplets.cache->add_value(
-                                            0, gradz_dofs[b], g_dofs[a], v);
-                                    }
-                                }
-                            };
-
-                        // Term A: (w/total_w) * H(p_sum)
-                        for (const auto& e : ee_cache) {
-                            local_hessian_to_global_triplets(
-                                (w / total_w) * e.local_hess,
-                                e.dict->vertex_ids(), dim,
-                                *(hess_triplets.cache));
-                        }
+                        assert(ee_cache.empty());
                         for (const auto& e : const_cache) {
                             local_hessian_to_global_triplets(
                                 (w / total_w) * e.local_hess_near,
                                 *e.vertex_ids, dim, *(hess_triplets.cache));
-                        }
-
-                        // Term B: -(w*avg_P/total_w) * Σ_i H(mol_i)
-                        for (const auto& e : ee_cache) {
-                            local_hessian_to_global_triplets(
-                                -(w * avg_P / total_w) * e.mol_hess,
-                                e.dict->primary_vertex_ids(), dim,
-                                *(hess_triplets.cache));
-                        }
-
-                        // Term C: -(w/total_w²) * sym(G ⊗ ∇Z)
-                        for (const auto& ei : ee_cache) {
-                            const auto& prim_dofs_i = ei.dict->primary_dofs();
-                            const Eigen::Vector<double, 12>& mol_grad_i =
-                                ei.mol_grad;
-                            for (const auto& ek : ee_cache) {
-                                add_sym_correction_norm(
-                                    ek.dict->primary_dofs(),
-                                    (ek.P - avg_P) * ek.mol_grad, prim_dofs_i,
-                                    mol_grad_i);
-                                add_sym_correction_norm(
-                                    ek.dict->dofs(), ek.mol_val * ek.grad_p,
-                                    prim_dofs_i, mol_grad_i);
-                            }
-                            for (const auto& ej : const_cache) {
-                                add_sym_correction_norm(
-                                    *ej.dofs, ej.grad_p_near, prim_dofs_i,
-                                    mol_grad_i);
-                            }
                         }
                     } else {
                         // Unnormalized: H(w*p_sum) = w * H(p_sum)
@@ -1571,7 +1467,7 @@ Eigen::SparseMatrix<double> ESPPotential::hessian(
     });
 
     if (storage.empty()) {
-        return Eigen::SparseMatrix<double>();
+        return hess;
     }
 
     // Prepares for parallel concatenation

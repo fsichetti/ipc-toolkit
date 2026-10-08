@@ -38,7 +38,7 @@ GCPFrictionData smooth_friction_data_generator_2d();
 GCPFrictionData smooth_friction_data_generator_3d();
 
 /// Scene geometry for "ESP friction force jacobian 3D" tests.
-/// Sections: "point-triangle", "point-edge", "point-point".
+/// Sections: "point-triangle", "point-edge", "point-point", "edge-edge".
 struct ESPFrictionSceneData3D {
     Eigen::MatrixXd X;
     Eigen::MatrixXi E;
