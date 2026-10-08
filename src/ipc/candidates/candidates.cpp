@@ -148,8 +148,7 @@ void Candidates::build(
     Eigen::ConstRef<Eigen::MatrixXd> vertices_t0,
     Eigen::ConstRef<Eigen::MatrixXd> vertices_t1,
     const double inflation_radius,
-    BroadPhase* broad_phase,
-    const bool all_types)
+    BroadPhase* broad_phase)
 {
     IPC_TOOLKIT_PROFILE_BLOCK("Candidates::build(dynamic)");
 

@@ -41,15 +41,12 @@ public:
     /// @param vertices_t1 Surface vertex ending positions (rowwise).
     /// @param inflation_radius Amount to inflate the bounding boxes.
     /// @param broad_phase Broad phase method to use.
-    /// @param all_types Also detect the candidate types only ESP needs (see
-    ///                  BroadPhase::detect_collision_candidates).
     void build(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices_t0,
         Eigen::ConstRef<Eigen::MatrixXd> vertices_t1,
         const double inflation_radius = 0,
-        BroadPhase* broad_phase = nullptr,
-        const bool all_types = false);
+        BroadPhase* broad_phase = nullptr);
 
     /// @brief Get the number of collision candidates.
     /// @return The number of collision candidates.
