@@ -75,8 +75,8 @@ is C1, and its Hessian need not be unique at an exact feature switch.
 `python/examples/esp_local_transfer.py` produces an analytic old/new force sweep,
 CSV, plot, and independently rebuilt-contact finite-difference checks on issue
 #280's original edge-over-box geometry. In a 631-sample sweep over
-`A.x=[49.700,50.015] mm`, maximum horizontal force drops from 103.1273 to 8.8900
-in the reproduction's units (91.38%). A smaller target-side peak remains. The
+`A.x=[49.700,50.015] mm`, maximum horizontal force drops from 464.79 to 77.80
+in the reproduction's units (83.26%). A smaller target-side peak remains. The
 energy and vertical force change too; this is a changed quadrature formulation.
 
 The interior-crossing unit test checks increasing energy as the gap shrinks over
